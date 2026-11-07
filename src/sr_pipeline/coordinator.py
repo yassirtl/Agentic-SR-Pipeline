@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field
 
+from .agents.retrieval import describe_search
 from .guardrail import (MAX_STEPS, PREREQUISITES, STAGES, StageName, check_move,
                         earliest_stale, fresh_stages)
 from .llm import LLM
@@ -28,6 +29,9 @@ def summarize_state(state: ReviewState) -> str:
         f"Fresh stages: {', '.join(fresh_stages(completed)) or 'none'}",
         "Counts: " + ", ".join(f"{f}={len(state.get(f, []))}" for f in LIST_FIELDS),
     ]
+    search = describe_search(state)
+    if search:
+        lines.append(search)
     issues = state.get("qa_report", {}).get("issues", [])
     if issues:
         lines.append("Last critic issues: " + "; ".join(map(str, issues)))
@@ -40,7 +44,9 @@ def build_prompt(state: ReviewState) -> str:
         "You coordinate a PRISMA 2020 systematic review. Choose the next stage to run.\n"
         f"Stages and prerequisites:\n{table}\n"
         "A stage is fresh if it ran after its prerequisites. Re-running a stage makes "
-        "later stages stale. The review ends after 'report'.\n\n"
+        "later stages stale. The review ends after 'report'.\n"
+        "If retrieval returned too few unique records to screen (fewer than the search "
+        "target's minimum) or a database failed, you may run 'search_strategy' again.\n\n"
         f"Current state:\n{summarize_state(state)}"
     )
 

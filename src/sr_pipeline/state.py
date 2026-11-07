@@ -17,8 +17,9 @@ class ReviewState(TypedDict, total=False):
     protocol: dict
     search_strategy: dict
 
-    records: Annotated[list, operator.add]
-    unique_records: list
+    records: Annotated[list, operator.add]   # every downloaded record, tagged with its round
+    unique_records: list                     # deduplicated papers of the latest retrieval
+    retrieval: dict                          # merge log of the latest retrieval (duplicates, conflicts)
 
     ta_decisions: Annotated[list, operator.add]
     ft_decisions: Annotated[list, operator.add]

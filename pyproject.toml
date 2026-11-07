@@ -16,6 +16,14 @@ dependencies = [
     "pyyaml>=6.0",
     "python-dotenv~=1.2",
     "httpx~=0.28",
+    # Part 5: deduplication, full text, RAG
+    "rapidfuzz~=3.14",
+    "pypdf~=7.0",
+    "numpy~=2.4",
+    "faiss-cpu~=1.10.0",  # 1.11+ ships no Intel Mac (x86_64) wheel
+    "rank-bm25~=0.2.2",
+    "snowballstemmer~=3.0",  # BM25 word stems (pure Python)
+    "openai>=1.40",       # embeddings (already installed with langchain-openai)
 ]
 
 [project.optional-dependencies]
@@ -26,3 +34,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+filterwarnings = [  # raised inside faiss's SWIG bindings, not by this project
+    "ignore::DeprecationWarning:faiss.loader",
+    "ignore:builtin type [Ss]wig:DeprecationWarning",
+]

@@ -15,6 +15,9 @@ Three jobs, all in one place so every connector behaves the same way:
 3. **Rate limit.** A minimum interval between two requests *to the same host*
    (PubMed: 3/s without key, arXiv: one every 3 s). Cache hits do not count.
 
+``get_bytes`` is the binary twin of ``get_text`` (open-access PDFs): body cached
+as ``<key>.bin`` with its content type in ``<key>.meta.json``.
+
 ``transport``, ``sleep`` and ``clock`` are injectable so tests run with recorded
 responses (``httpx.MockTransport``), no network and no real waiting.
 """
@@ -74,7 +77,7 @@ class HttpClient:
         if path is not None and path.exists() and not self.refresh:
             return json.loads(path.read_text())["body"]
 
-        body = self._fetch(url, params)
+        body = self._fetch(url, params).text
         if path is not None:
             path.parent.mkdir(parents=True, exist_ok=True)
             public = {k: v for k, v in params.items() if k not in SECRET_PARAMS}
@@ -86,6 +89,26 @@ class HttpClient:
     def get_json(self, url: str, params: dict | None = None) -> dict:
         return json.loads(self.get_text(url, params))
 
+    def get_bytes(self, url: str, params: dict | None = None) -> tuple[bytes, str]:
+        """Binary GET (e.g. a PDF): ``(body, content_type)``, cached like ``get_text``."""
+        params = {k: v for k, v in (params or {}).items() if v is not None}
+        key = cache_key(url, params)
+        body_path = self.cache_dir / f"{key}.bin" if self.cache_dir else None
+        meta_path = self.cache_dir / f"{key}.meta.json" if self.cache_dir else None
+        if body_path is not None and body_path.exists() and meta_path.exists() and not self.refresh:
+            return body_path.read_bytes(), json.loads(meta_path.read_text())["content_type"]
+
+        resp = self._fetch(url, params)
+        body, ctype = resp.content, resp.headers.get("content-type", "")
+        if body_path is not None:
+            body_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = body_path.with_suffix(".tmp")
+            tmp.write_bytes(body)
+            tmp.replace(body_path)
+            meta_path.write_text(json.dumps({"url": url, "content_type": ctype,
+                                             "final_url": str(resp.url)}))
+        return body, ctype
+
     # --- internals -------------------------------------------------------------
     def _wait_turn(self, host: str) -> None:
         interval = self.min_interval.get(host, 0.0)
@@ -96,7 +119,7 @@ class HttpClient:
                 self.sleep(wait)
         self._last_request[host] = self.clock()
 
-    def _fetch(self, url: str, params: dict) -> str:
+    def _fetch(self, url: str, params: dict) -> httpx.Response:
         host = urlsplit(url).netloc
         last_error = ""
         status = None
@@ -109,7 +132,7 @@ class HttpClient:
                 status, last_error, retry_after = None, f"{type(exc).__name__}: {exc}", None
             else:
                 if resp.status_code == 200:
-                    return resp.text
+                    return resp
                 status, last_error = resp.status_code, resp.text[:200]
                 if status not in RETRY_STATUS:
                     raise HttpError(url, status, last_error)

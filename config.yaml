@@ -22,8 +22,17 @@ max_refinements: 2
 # you instead of blocking you. Better set it in .env as SR_CONTACT_EMAIL.
 contact_email: null
 
+# RAG over full texts (Part 5): section-aware chunks of ~chunk_words words with
+# chunk_overlap words of overlap; OpenAI embeddings (cached on disk) + BM25,
+# fused by rank; the LLM re-ranker scores the rerank_top best passages.
+embedding_model: text-embedding-3-small
+chunk_words: 250
+chunk_overlap: 40
+rerank_top: 20
+
 # Relative paths are resolved under the project root.
 cache_dir: .cache/llm
 http_cache_dir: .cache/http   # recorded database answers (searches are re-run from here)
+embedding_cache: .cache/embeddings.sqlite
 runs_dir: runs
 protocol_template: protocols/template.yaml

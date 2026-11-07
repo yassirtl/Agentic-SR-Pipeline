@@ -12,7 +12,8 @@ the same caches.
 Environment overrides:
   SR_PROJECT_ROOT, SR_CACHE_DIR, SR_HTTP_CACHE_DIR, SR_RUNS_DIR,
   SR_PROTOCOL_TEMPLATE, SR_DEFAULT_MODEL, SR_MAX_RECORDS, SR_MAX_STEPS,
-  SR_CONTACT_EMAIL, SR_MIN_HITS, SR_MAX_REFINEMENTS,
+  SR_CONTACT_EMAIL, SR_MIN_HITS, SR_MAX_REFINEMENTS, SR_EMBEDDING_MODEL,
+  SR_EMBEDDING_CACHE,
   SR_MODEL_<AGENT> (e.g. SR_MODEL_EXTRACTION=gpt-4o).
 Optional database keys (read from the environment, never stored in the config):
   NCBI_API_KEY (PubMed: 10 requests/s instead of 3), OPENALEX_API_KEY.
@@ -60,16 +61,25 @@ class Config(BaseModel):
     contact_email: str | None = Field(
         None, description="Sent to OpenAlex (mailto) and NCBI (email) as a polite contact.")
 
+    # RAG (Part 5): chunks of ~chunk_words words, overlapping by chunk_overlap;
+    # the LLM re-ranker reads the rerank_top best fused passages.
+    embedding_model: str = "text-embedding-3-small"
+    chunk_words: int = Field(250, ge=50)
+    chunk_overlap: int = Field(40, ge=0)
+    rerank_top: int = Field(20, ge=1)
+
     project_root: Path = Field(default_factory=find_project_root)
     cache_dir: Path = Path(".cache/llm")
     http_cache_dir: Path = Path(".cache/http")
+    embedding_cache: Path = Path(".cache/embeddings.sqlite")
     runs_dir: Path = Path("runs")
     protocol_template: Path = Path("protocols/template.yaml")
 
     def model_post_init(self, _ctx) -> None:
         root = self.project_root.expanduser().resolve()
         self.project_root = root
-        for name in ("cache_dir", "http_cache_dir", "runs_dir", "protocol_template"):
+        for name in ("cache_dir", "http_cache_dir", "embedding_cache", "runs_dir",
+                     "protocol_template"):
             p = getattr(self, name).expanduser()
             setattr(self, name, p if p.is_absolute() else root / p)
 
@@ -89,6 +99,12 @@ class Config(BaseModel):
 
         return HttpClient(cache_dir=self.http_cache_dir, **kwargs)
 
+    def make_embedder(self, **kwargs):
+        """OpenAI embeddings with the on-disk cache (re-embedding a chunk is free)."""
+        from .rag.embed import OpenAIEmbedder
+
+        return OpenAIEmbedder(self.embedding_model, cache_path=self.embedding_cache, **kwargs)
+
 
 _ENV_FIELDS = {
     "SR_PROJECT_ROOT": "project_root",
@@ -102,6 +118,8 @@ _ENV_FIELDS = {
     "SR_CONTACT_EMAIL": "contact_email",
     "SR_MIN_HITS": "min_hits",
     "SR_MAX_REFINEMENTS": "max_refinements",
+    "SR_EMBEDDING_MODEL": "embedding_model",
+    "SR_EMBEDDING_CACHE": "embedding_cache",
 }
 
 
