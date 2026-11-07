@@ -1,0 +1,24 @@
+# PRISMA 2020 protocol template.
+#
+# Scope (applied as is, the Planner never changes it):
+#   databases, years, languages
+# Hints (optional): anything you fill in below is given to the Planner, which
+# drafts the rest from the research question. You approve or edit the final
+# protocol before the search starts (skipped with --auto).
+
+# --- Scope ------------------------------------------------------------------
+databases: [openalex, pubmed, arxiv]   # any of: openalex, pubmed, arxiv
+years:
+  start: 2015        # first publication year (null = no limit)
+  end: null          # last publication year (null = up to now)
+languages: [English]
+
+# --- Hints for the Planner (leave empty to let it decide) -------------------
+pico:
+  population: ""     # who is studied
+  intervention: ""   # intervention / exposure / method
+  comparator: ""     # comparison, or "any" / "none"
+  outcomes: []       # outcomes of interest
+study_designs: []    # e.g. [randomized controlled trial, cohort study]
+inclusion_criteria: []
+exclusion_criteria: []

@@ -17,10 +17,12 @@ from typing import Any, Callable, Protocol, TypeVar
 
 from pydantic import BaseModel
 
+from .config import find_project_root
+
 T = TypeVar("T", bound=BaseModel)
 
 DEFAULT_MODEL = "gpt-4o-mini"
-DEFAULT_CACHE_DIR = Path(".cache/llm")
+DEFAULT_CACHE_SUBDIR = ".cache/llm"  # under the project root (see config.py)
 
 # USD per 1M tokens: (input, output). Edit when prices change or models are added.
 PRICES: dict[str, tuple[float, float]] = {
@@ -86,11 +88,12 @@ class OpenAILLM(_Base):
     """
 
     def __init__(self, models: dict[str, str] | None = None, default: str = DEFAULT_MODEL,
-                 cache_dir: str | Path = DEFAULT_CACHE_DIR,
+                 cache_dir: str | Path | None = None,
                  chat_factory: Callable[[str], Any] = _default_chat_factory):
         self.models = models or {}
         self.default = default
-        self.cache_dir = Path(cache_dir)
+        # Absolute by default, so every working directory shares one cache.
+        self.cache_dir = Path(cache_dir) if cache_dir else find_project_root() / DEFAULT_CACHE_SUBDIR
         self.chat_factory = chat_factory
         self._clients: dict[str, Any] = {}  # one client per model, built once
 

@@ -9,6 +9,7 @@ from functools import partial
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from .agents.planner import protocol_approval
 from .coordinator import END_SIGNAL, coordinator_step
 from .guardrail import MAX_STEPS, STAGES
 from .llm import LLM
@@ -36,11 +37,16 @@ def route(state: ReviewState) -> str:
 
 
 def build_graph(llm: LLM, *, max_steps: int = MAX_STEPS, stages: dict | None = None,
-                checkpointer=None):
+                approve_protocol: bool = False, checkpointer=None):
     """Compile the review graph.
 
     ``stages`` maps a stage name to its node function; missing stages get a
     placeholder (later parts plug the real agents in here).
+
+    ``approve_protocol=True`` inserts the human approval node after the planner
+    (planner -> protocol_approval -> coordinator). It is not a stage: the
+    guardrail never sees it, and the coordinator cannot skip it. The CLI's
+    ``--auto`` flag maps to ``approve_protocol=False``.
     """
     stages = stages or {}
     g = StateGraph(ReviewState)
@@ -51,7 +57,14 @@ def build_graph(llm: LLM, *, max_steps: int = MAX_STEPS, stages: dict | None = N
     g.add_edge(START, "coordinator")
     g.add_conditional_edges("coordinator", route, {**{s: s for s in STAGES}, END_SIGNAL: END})
     for name in STAGES:
+        if name == "planner" and approve_protocol:
+            continue
         g.add_edge(name, END if name == "report" else "coordinator")
+
+    if approve_protocol:
+        g.add_node("protocol_approval", protocol_approval)
+        g.add_edge("planner", "protocol_approval")
+        g.add_edge("protocol_approval", "coordinator")
 
     return g.compile(checkpointer=checkpointer or MemorySaver())
 

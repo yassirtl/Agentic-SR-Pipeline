@@ -1,0 +1,17 @@
+# Run configuration. Environment variables override these values (see src/sr_pipeline/config.py).
+# Never put the API key here: set OPENAI_API_KEY in the environment (Colab Secrets).
+
+default_model: gpt-4o-mini
+models:              # per-agent model; agents not listed use default_model
+  planner: gpt-4o-mini
+  coordinator: gpt-4o-mini
+  # extraction: gpt-4o
+  # synthesis: gpt-4o
+
+max_records: 500     # per database
+max_steps: 40        # coordinator step budget
+
+# Relative paths are resolved under the project root.
+cache_dir: .cache/llm
+runs_dir: runs
+protocol_template: protocols/template.yaml
