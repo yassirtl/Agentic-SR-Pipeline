@@ -64,6 +64,12 @@ class ProtocolDraft(BaseModel):
         description="Short, testable criteria a record must meet, one idea each.")
     exclusion_criteria: list[str] = Field(
         description="Short, testable reasons to exclude a record, one idea each.")
+    full_text_criteria: list[str] = Field(
+        default_factory=list,
+        description="Criteria from the two lists above, copied word for word, that a title "
+                    "and abstract can never show (e.g. 'groups comparable at baseline', "
+                    "'reports mean and standard deviation'). They are checked only at "
+                    "full-text screening. Empty if none.")
     study_designs: list[str] = Field(
         description="Eligible study designs ONLY if the question or the user restricts them "
                     "(e.g. 'randomized controlled trial'). Otherwise an empty list = any "
@@ -105,6 +111,20 @@ class Protocol(ProtocolDraft):
     # review (evaluation/topics.yaml), not from the Planner.
     topic: str | None = None
     criteria_source: str = "Planner (LLM draft)"
+    # Criterion text -> one positive test sentence the screeners judge instead of the
+    # (displayed) wording, e.g. for the review's negative exclusion criteria (Part 6c).
+    criterion_tests: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _tags_follow_criteria(self):
+        """Stage tags and test sentences are keyed by criterion text: a criterion that was
+        reworded or removed (e.g. at approval) loses them, nothing stale survives."""
+        texts = set(self.inclusion_criteria) | set(self.exclusion_criteria)
+        self.full_text_criteria = [c for c in dict.fromkeys(self.full_text_criteria)
+                                   if c in texts]
+        self.criterion_tests = {c: t for c, t in self.criterion_tests.items()
+                                if c in texts and t.strip()}
+        return self
 
 
 class Template(BaseModel):

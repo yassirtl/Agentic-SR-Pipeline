@@ -107,7 +107,8 @@ def build_prompt(question: str, template: Template) -> str:
         "randomized controlled trial). This is only a suggestion shown to the human, who "
         "decides; it does not change study_designs. Leave it empty if no design clearly "
         "fits.\n"
-        "- Criteria must be short and testable from a title, abstract or full text.\n"
+        "- Criteria must be short and testable from a title, abstract or full text. List in "
+        "full_text_criteria (copied word for word) those an abstract can never show.\n"
         "- One idea per criterion; do not repeat the scope (databases, years, languages).\n"
         "- Keep every element the user fixed below; refine, do not contradict.\n"
         + (DATABASE_RULE if auto else "")
@@ -156,7 +157,13 @@ def make_planner(llm: LLM, template: Template, topic: dict | None = None):
                            "suggested_designs": protocol.suggested_designs,
                            "design_reason": protocol.design_reason,
                            "design_suggestion": suggestion_status(protocol, accepted=False),
-                           "criteria_source": protocol_dict["criteria_source"], **seeded,
+                           "criteria_source": protocol_dict["criteria_source"],
+                           "full_text_criteria": protocol_dict["full_text_criteria"],
+                           # Tags the LLM wrote that match none of its criteria word for word.
+                           "full_text_criteria_dropped": [
+                               c for c in draft.full_text_criteria
+                               if c not in protocol.full_text_criteria],
+                           **seeded,
                            **usage.as_dict()}],
         }
 

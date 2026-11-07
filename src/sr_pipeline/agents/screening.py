@@ -45,6 +45,21 @@ otherwise the record is excluded on D (``resolved_by: design_guard``), never
 left ``unresolved`` (which ``--auto`` would include). Seen live: the adjudicator
 let a network meta-analysis and a trial protocol through.
 
+**Stage rules** (Part 6c, from the 6b run where A excluded all 50 abstracts):
+- criteria tagged ``full_text`` (``protocol['full_text_criteria']``, e.g. "groups
+  comparable at baseline", "mean and SD reported") are shown at title/abstract
+  but never decide there: their verdict is forced to ``unclear`` (``deferred``)
+  and does not trigger A's strict rule. They decide at full text;
+- multi-arm trials are judged on one eligible pair of arms, named in
+  ``comparison`` before the verdicts; other arms never exclude the study
+  (Cochrane Handbook: use the relevant arms);
+- two exclusions on **different** deciding criteria are not an agreement
+  (flag ``different_reasons``): the adjudicator decides. A general check against
+  one screener misreading a criterion (6b: A excluded Huang on E1 from "without
+  impaired cognition", B on E2);
+- a criterion may carry a positive test sentence
+  (``protocol['criterion_tests']``), judged instead of the displayed wording.
+
 Agreement between A and B is measured with Cohen's kappa.
 
 **Full text** (``ft_screening``): only the title/abstract includes. Full text
@@ -100,13 +115,22 @@ class CriterionVerdict(BaseModel):
                           "e.g. 'doi:10.1/x::12'. Empty for title/abstract screening.")
 
 
+COMPARISON = Field("", description="The pair of arms the verdicts judge, chosen first, "
+                   "e.g. 'aerobic exercise arm vs usual-care control'. For a multi-arm "
+                   "trial, the one pair that fits the criteria best. Empty if the study "
+                   "has no arms (e.g. a review).")
+
+
 class ScreeningDecision(BaseModel):
+    # Field order matters: the arm pair is chosen before the criteria are judged on it.
+    comparison: str = COMPARISON
     verdicts: list[CriterionVerdict] = Field(
         description="One verdict per criterion, every criterion, in the order listed.")
     reason: str = Field(description="One or two sentences on the record.")
 
 
 class Adjudication(BaseModel):
+    comparison: str = COMPARISON
     verdicts: list[CriterionVerdict] = Field(
         description="Your own verdict per criterion, every criterion, in the order listed.")
     unresolved: bool = Field(False, description="True only if you truly cannot decide; a "
@@ -140,6 +164,18 @@ def criteria(protocol: dict) -> list[tuple[str, str]]:
     return out
 
 
+def deferred_at_ta(protocol: dict) -> set[str]:
+    """IDs of the criteria an abstract can never show (checked only at full text)."""
+    full_text = set(protocol.get("full_text_criteria") or [])
+    return {cid for cid, text in criteria(protocol) if text in full_text}
+
+
+def criterion_query(protocol: dict, cid: str, text: str) -> str:
+    """Text used to judge (and, at full text, to retrieve passages for) a criterion."""
+    test = (protocol.get("criterion_tests") or {}).get(text)
+    return f"{cid}: {text}" + (f" ({test})" if test else "")
+
+
 def protocol_block(protocol: dict) -> str:
     pico = protocol.get("pico", {})
     lines = [f"Review question: {protocol.get('question', '')}",
@@ -149,7 +185,11 @@ def protocol_block(protocol: dict) -> str:
              f"Outcomes: {'; '.join(pico.get('outcomes', []))}",
              "Criteria (D = design and I = inclusion: all must be met; E = exclusion: any "
              "one that applies excludes):"]
-    lines += [f"  {cid}: {text}" for cid, text in criteria(protocol)]
+    later, tests = deferred_at_ta(protocol), protocol.get("criterion_tests") or {}
+    for cid, text in criteria(protocol):
+        lines.append(f"  {cid}{' [full text only]' if cid in later else ''}: {text}")
+        if text in tests:
+            lines.append(f"      Test for {cid}: {tests[text]}")
     return "\n".join(lines)
 
 
@@ -172,7 +212,13 @@ COMMON_RULE = (
     "the study's motivation; they are never evidence that it fails a criterion. Eligibility "
     "never depends on the results: a study that found no effect is as eligible as one that "
     "found an effect. Criteria on publication year or language were applied by the "
-    "database search: never let them decide (inclusion: 'yes', exclusion: 'no').")
+    "database search: never let them decide (inclusion: 'yes', exclusion: 'no').\n"
+    # Seen live (6b): Makizako (exercise / horticulture / control) and Huang (exercise /
+    # CBT / control), both in the gold review, excluded for their extra arm.
+    "Multi-arm trials: the study is eligible if at least one pair of arms fits the criteria "
+    "(e.g. an exercise arm vs a control arm without exercise). Choose that pair first and "
+    "name it in 'comparison', then judge every criterion on that pair; the trial's other "
+    "arms (another intervention, a combined programme) never exclude the study.")
 
 VERDICT_RULE = (
     "Give one verdict per criterion, for every criterion, in the order listed. First copy "
@@ -182,7 +228,8 @@ VERDICT_RULE = (
     "text says nothing about it. Words that show a criterion IS met (e.g. 'a randomized "
     "controlled trial' for D) mean 'yes', never 'no'. For E criteria, 'yes' means the "
     "exclusion applies to the study. A 'no' (or an E 'yes') without a quote found in the "
-    "text is not accepted.\n"
+    "text is not accepted. When a criterion has a 'Test' sentence, judge that sentence "
+    "(for E: 'yes' = the sentence is true of the study).\n"
     "D first: is this record itself a primary study (its own participants and data), or a "
     "review, meta-analysis or protocol? A record that reviews, pools or re-analyses other "
     "studies is 'no' for D even when those studies were randomized trials (seen: 'a "
@@ -190,7 +237,9 @@ VERDICT_RULE = (
     "say what the record is.")
 
 STAGE_TEXT = {
-    "ta": "This is title/abstract screening: you see only the title and abstract.",
+    "ta": ("This is title/abstract screening: you see only the title and abstract. "
+           "Criteria marked [full text only] cannot be judged from an abstract: answer "
+           "'unclear' for them."),
     "ft": ("This is full-text screening: you see the abstract and, for each criterion, the "
            "passages of the full text that best match it. Judge the study as reported in "
            "these passages; give the chunk id of the passage each quote comes from."),
@@ -215,7 +264,8 @@ def screening_prompt(protocol: dict, evidence: str, *, style: str, stage: str) -
 def _opinion(name: str, d: dict) -> str:
     lines = [f"{name}: {d['decision']}"
              + (f" on {d['criterion']}" if d["decision"] == "exclude" else "")
-             + f". {d['reason']}"]
+             + f". {d['reason']}"
+             + (f" Comparison judged: {d['comparison']}" if d.get("comparison") else "")]
     for v in d["verdicts"]:
         quote = f' "{v["quote"]}"' if v.get("quote") else ""
         lines.append(f"  {v['criterion']}: {v['met']}{quote}")
@@ -335,13 +385,16 @@ def design_words(protocol: dict) -> re.Pattern | None:
 
 
 def check_verdicts(raw: list[dict], crit_ids: list[str], text: str, who: str,
-                   design_re: re.Pattern | None = None) -> tuple[list[dict], list[str]]:
+                   design_re: re.Pattern | None = None, deferred: set[str] = frozenset()
+                   ) -> tuple[list[dict], list[str]]:
     """Verdicts in criterion order, checked by code. A criterion the LLM skipped is
     'unclear'; a failure whose quote is empty or not in the text is downgraded to
     'unclear' (flag ``unverified_<who>_<criterion>``), and so is a D 'no' whose quote
     names a listed design without any non-primary word (flag
     ``contradicting_quote_<who>_D``). Each verdict gets ``verified``: a non-empty quote
-    found in the text."""
+    found in the text. Criteria in ``deferred`` (full-text-only, at title/abstract) are
+    forced to 'unclear' with ``deferred: True``; the model's answer stays in
+    ``met_claimed``."""
     by_id: dict[str, dict] = {}
     for v in raw:
         cid = (v.get("criterion") or "").strip().upper()
@@ -361,7 +414,11 @@ def check_verdicts(raw: list[dict], crit_ids: list[str], text: str, who: str,
             flags.append(f"quote_not_found_{who}")
         item = {"criterion": cid, "met": v["met"], "quote": quote,
                 "chunk_id": v.get("chunk_id") or "", "verified": verified}
-        if fails(cid, v["met"]) and not verified:
+        if cid in deferred:
+            if v["met"] != "unclear":
+                item["met_claimed"] = v["met"]
+            item["met"], item["deferred"] = "unclear", True
+        elif fails(cid, v["met"]) and not verified:
             flags.append(f"unverified_{who}_{cid}")
             item["met_claimed"], item["met"] = v["met"], "unclear"
         elif (cid == "D" and v["met"] == "no" and design_re is not None
@@ -382,7 +439,8 @@ def decide(verdicts: list[dict], rule: str) -> dict:
                     "chunk_id": v["chunk_id"], "missing_info": False}
     if rule == "strict":
         for v in verdicts:
-            if not v["criterion"].startswith("E") and v["met"] == "unclear":
+            if (not v["criterion"].startswith("E") and v["met"] == "unclear"
+                    and not v.get("deferred")):
                 return {"decision": "exclude", "criterion": v["criterion"], "quote": "",
                         "chunk_id": "", "missing_info": True}
     return {"decision": "include", "criterion": "all", "quote": "", "chunk_id": "",
@@ -390,10 +448,12 @@ def decide(verdicts: list[dict], rule: str) -> dict:
 
 
 def _opinion_item(answer, crit_ids: list[str], text: str, who: str, rule: str,
-                  design_re: re.Pattern | None = None) -> tuple[dict, list[str]]:
+                  design_re: re.Pattern | None = None, deferred: set[str] = frozenset()
+                  ) -> tuple[dict, list[str]]:
     verdicts, flags = check_verdicts([v.model_dump() for v in answer.verdicts], crit_ids,
-                                     text, who, design_re)
-    return {"verdicts": verdicts, "reason": answer.reason, **decide(verdicts, rule)}, flags
+                                     text, who, design_re, deferred)
+    return {"comparison": answer.comparison, "verdicts": verdicts, "reason": answer.reason,
+            **decide(verdicts, rule)}, flags
 
 
 def _verdict(d: dict | None, cid: str) -> dict | None:
@@ -416,6 +476,7 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
     text = evidence  # quotes must come from what the screener was shown
     crit_ids = [cid for cid, _ in criteria(protocol)]
     design_re = design_words(protocol)
+    deferred = deferred_at_ta(protocol) if mode == "ta" else set()
     # Without a full text nobody can see what the abstract omits: A does not exclude on it.
     rule_a = "lenient" if mode == "ft_abstract" else "strict"
     try:
@@ -425,7 +486,8 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
                                        screening_prompt(protocol, evidence, style=style,
                                                         stage=mode), agent=agent)
             usages.append(u)
-            item[key], flags = _opinion_item(d, crit_ids, text, key, rule, design_re)
+            item[key], flags = _opinion_item(d, crit_ids, text, key, rule, design_re,
+                                             deferred)
             item["flags"] += flags
         agree = item["a"]["decision"] == item["b"]["decision"]
         if agree and item["a"]["decision"] == "exclude" and not (
@@ -434,9 +496,15 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
             # text are not an agreement, the adjudicator decides.
             item["flags"].append("exclusion_without_quote")
             agree = False
+        elif agree and item["a"]["decision"] == "exclude" and \
+                item["a"]["criterion"] != item["b"]["criterion"]:
+            # Same decision, different reasons: at least one screener misread a criterion
+            # (6b: Huang, A on E1 from "without impaired cognition", B on E2).
+            item["flags"].append("different_reasons")
+            agree = False
         if agree:
             final, by = item["a"]["decision"], "agreement"
-            criterion = _agreed_criterion(item, crit_ids) if final == "exclude" else "all"
+            criterion = item["a"]["criterion"]
         else:
             adj, u = llm.call_with_usage(Adjudication,
                                          adjudicator_prompt(protocol, evidence, item["a"],
@@ -444,7 +512,7 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
                                          agent="adjudicator")
             usages.append(u)
             item["adjudicator"], flags = _opinion_item(adj, crit_ids, text, "adjudicator",
-                                                       "lenient", design_re)
+                                                       "lenient", design_re, deferred)
             item["adjudicator"]["unresolved"] = adj.unresolved
             item["flags"] += flags
             d = item["adjudicator"]
@@ -464,17 +532,6 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
         final, by, criterion = "unresolved", "pending", None
     item["final"], item["resolved_by"], item["criterion"] = final, by, criterion
     return item, usages
-
-
-def _agreed_criterion(item: dict, crit_ids: list[str]) -> str:
-    """Both screeners exclude: the first criterion (deciding order) that either of them
-    failed with a verified quote."""
-    for cid in crit_ids:
-        for key in ("a", "b"):
-            v = _verdict(item[key], cid)
-            if v and fails(cid, v["met"]):
-                return cid
-    return item["a"]["criterion"]  # not reached: an agreed exclusion has a verified quote
 
 
 def _design_guard(item: dict) -> str | None:
@@ -661,7 +718,7 @@ def make_ft_screening(llm: LLM, http, embedder, *, index_dir: str | Path, worker
             ft = fulltexts[p["paper_id"]]
             if ft.status != "abstract_only" and index is not None:
                 hits[p["paper_id"]] = {
-                    cid: index.search(f"{cid}: {text}", k=candidates,
+                    cid: index.search(criterion_query(protocol, cid, text), k=candidates,
                                       paper_ids=[p["paper_id"]]) for cid, text in crit}
 
         def one(paper):
@@ -673,7 +730,8 @@ def make_ft_screening(llm: LLM, http, embedder, *, index_dir: str | Path, worker
                 for cid, text in crit:
                     ranked = hits[pid][cid]
                     if use_rerank:
-                        ranked, u = rerank(llm, f"{cid}: {text}", ranked, top=candidates)
+                        ranked, u = rerank(llm, criterion_query(protocol, cid, text), ranked,
+                                          top=candidates)
                         if u is not None:
                             usages.append(u)
                     by_criterion[cid] = ranked[:passages]

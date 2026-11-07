@@ -35,17 +35,37 @@ T3:
   years: {start: null, end_date: 2024-01-07}
   search_date_source: '"from establishing the database to January 7, 2024"'
   their_databases: [Cochrane Library, Web of Science, PubMed, Embase, CNKI, Wanfang]
-  inclusion_criteria:   # Li 2024, section 2.2 (abridged)
+  # Li 2024, section 2.2 (abridged). Part 6c: `stage: full_text` = an abstract can never
+  # show it (never decides at title/abstract); `test` = the positive sentence the screeners
+  # judge (the review's wording stays the one displayed). Reading of the review's criteria,
+  # from its question and Table 1: depressive symptoms are the OUTCOME, so depression is
+  # not a "comorbidity"; "interventions beyond exercise" concerns the exercise-vs-control
+  # pair used (multi-arm trials, Cochrane Handbook), not extra arms of the trial.
+  inclusion_criteria:
     - Randomized controlled trial
     - Healthy older adults aged over 60 years
-    - No significant baseline difference between experimental and control groups
+    - text: No significant baseline difference between experimental and control groups
+      stage: full_text
     - Intervention is physical exercise; the control group does no regular exercise
     - Depression measured with GDS, GDS-15, SCL-90, SGDS-K, TDQ or TGDS
-    - Data reported as mean and standard deviation
+    - text: Data reported as mean and standard deviation
+      stage: full_text
   exclusion_criteria:
-    - Older adults with comorbidities or below 60 years of age
-    - Interventions beyond exercise
-    - Incomplete data or no control group
+    - text: Older adults with comorbidities or below 60 years of age
+      test: >-
+        Participants have a disease or condition other than depression or depressive
+        symptoms (e.g. dementia, Alzheimer's disease, stroke, cancer, intellectual
+        disability), or include people younger than 60. Depression or depressive symptoms
+        are this review's outcome, never a comorbidity.
+    - text: Interventions beyond exercise
+      test: >-
+        In the comparison judged, the exercise arm also receives a non-exercise component
+        that the control arm does not (e.g. exercise plus diet or supplements, exercise plus
+        cognitive training). Other arms of the trial do not count.
+    - text: Incomplete data or no control group
+      test: >-
+        The study has no control arm (e.g. a single-group pre-post study), or reports
+        incomplete outcome data.
   languages: [English, Chinese]
   note: >-
     Table 1 lists 15 articles; the text also says 13 articles / 18 studies. Gold = the 15

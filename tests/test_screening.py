@@ -158,13 +158,26 @@ def test_two_exclusions_without_evidence_go_to_the_adjudicator():
     # includes and the adjudicator decides.
     assert "unverified_b_I1" in item["flags"] and item["b"]["decision"] == "include"
     assert (item["final"], item["resolved_by"]) == ("include", "adjudicator")
-    # One verified quote is enough for an agreed exclusion; the deciding criterion is the
-    # verified failure (E1), not A's missing information (I2).
-    llm = ScriptedLLM({"screener_a": [dec("exclude", "I2", quote="")],
+    # One verified quote is enough for an agreed exclusion on the same criterion.
+    llm = ScriptedLLM({"screener_a": [dec("exclude", "E1", quote="")],
+                       "screener_b": [dec("exclude", "E1", quote="randomized to walking")]})
+    item, _ = screen_record(llm, PROTOCOL, PAPERS[0], ta_evidence(PAPERS[0]), stage="ta", rnd=1)
+    # A's E1 'unclear' (no quote) does not exclude; A excludes on nothing -> include, so
+    # this is a disagreement decided by the adjudicator (none scripted -> unresolved).
+    assert item["a"]["decision"] == "include" and item["final"] == "unresolved"
+    llm = ScriptedLLM({"screener_a": [dec("exclude", "E1", quote="walking")],
                        "screener_b": [dec("exclude", "E1", quote="randomized to walking")]})
     item, _ = screen_record(llm, PROTOCOL, PAPERS[0], ta_evidence(PAPERS[0]), stage="ta", rnd=1)
     assert (item["final"], item["resolved_by"], item["criterion"]) == \
         ("exclude", "agreement", "E1")
+    # Part 6c: two exclusions on different criteria (A: I2 missing information, B: E1)
+    # are not an agreement; the adjudicator decides.
+    llm = ScriptedLLM({"screener_a": [dec("exclude", "I2", quote="")],
+                       "screener_b": [dec("exclude", "E1", quote="randomized to walking")],
+                       "adjudicator": [dec("include")]})
+    item, _ = screen_record(llm, PROTOCOL, PAPERS[0], ta_evidence(PAPERS[0]), stage="ta", rnd=1)
+    assert "different_reasons" in item["flags"]
+    assert (item["final"], item["resolved_by"]) == ("include", "adjudicator")
 
 
 def test_llm_error_leaves_record_unresolved_never_dropped():

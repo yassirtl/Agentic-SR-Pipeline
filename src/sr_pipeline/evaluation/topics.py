@@ -16,6 +16,12 @@ Two places use a topic:
   (``criteria_source``), which the approval step shows; the human can still
   edit everything there.
 
+A criterion in ``topics.yaml`` is a string, or ``{text, stage, test}`` (Part 6c):
+``stage: full_text`` = an abstract can never show it (checked only at full text);
+``test`` = one positive sentence the screeners judge, while the review's wording
+stays the one displayed. ``load_topic`` flattens them into the text lists plus
+``full_text_criteria`` and ``criterion_tests``.
+
 T1 / T2 have no criteria in ``topics.yaml`` yet: their runs keep the Planner's
 criteria, and ``criteria_source`` says so.
 """
@@ -35,7 +41,25 @@ def load_topic(topic_id: str, path: str | Path | None = None) -> dict:
     topics = yaml.safe_load(Path(path or TOPICS_FILE).read_text()) or {}
     if topic_id not in topics:
         raise KeyError(f"unknown topic {topic_id!r} (known: {', '.join(topics)})")
-    return {"id": topic_id, **topics[topic_id]}
+    topic = {"id": topic_id, **topics[topic_id]}
+    full_text, tests = [], {}
+    for key in ("inclusion_criteria", "exclusion_criteria"):
+        texts = []
+        for c in topic.get(key) or []:
+            if isinstance(c, str):
+                texts.append(c)
+                continue
+            texts.append(c["text"])
+            if c.get("stage", "any") == "full_text":
+                full_text.append(c["text"])
+            elif c.get("stage", "any") != "any":
+                raise ValueError(f"{topic_id}: stage must be 'any' or 'full_text': {c}")
+            if c.get("test"):
+                tests[c["text"]] = c["test"]
+        if key in topic:
+            topic[key] = texts
+    topic["full_text_criteria"], topic["criterion_tests"] = full_text, tests
+    return topic
 
 
 def topic_template(template: Template, topic: dict) -> Template:
@@ -70,6 +94,11 @@ def seed_protocol(protocol: dict, topic: dict) -> tuple[dict, dict]:
         if topic.get(key):
             out[key] = list(topic[key])
             fields.append(key)
+    if topic.get("inclusion_criteria") or topic.get("exclusion_criteria"):
+        # The topic's criteria come with their own tags: the Planner's do not apply.
+        out["full_text_criteria"] = list(topic.get("full_text_criteria") or [])
+        out["criterion_tests"] = dict(topic.get("criterion_tests") or {})
+        fields += ["full_text_criteria", "criterion_tests"]
     out["topic"] = topic["id"]
     out["criteria_source"] = criteria_source(topic)
     out = Protocol.model_validate(out).model_dump(mode="json")
