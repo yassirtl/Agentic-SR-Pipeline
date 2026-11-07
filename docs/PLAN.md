@@ -158,6 +158,8 @@ Run `runs/20261107-152601-4f1ef5`: with no design restriction the question match
 - **User runs:** `python -m sr_pipeline.search_smoke "Does exercise reduce depressive symptoms in older adults?" --check-word depress` (and with the suggestion accepted), < 5 min, < $0.02.
 
 ### Part 5: Retrieval, deduplication, full text, RAG
+- **Design decision (2026-11-07):** no project-wide design restriction. The template stays neutral (`study_designs: []`, `max_records: 3000`); the restriction is decided per topic at protocol approval, matching that topic's gold-standard review. Development data for Parts 5–6: the exercise/depression question with the RCT suggestion accepted (~1,900 OpenAlex + ~1,500 PubMed, all downloaded).
+- **Before Part 6:** choose the 3 evaluation topics with the user (each with a published review and its list of included studies), so screening is tuned and checked on real gold standards.
 - **Build:** `agents/retrieval.py`; dedup (DOI exact, then normalized-title fuzzy match) with counts for PRISMA; PDF download for open-access + text extraction; chunking; `rag/` hybrid index (FAISS over OpenAI embeddings + BM25 via `rank-bm25`, reciprocal rank fusion), LLM re-ranker (gpt-4o-mini scores the top ~20 passages); embeddings cached on disk; index saved per run.
 - **Done when:** dedup tests on crafted duplicates; retrieval test returns the right chunk for a known query.
 - **User runs:** index ~150 papers, 5–15 min, ~$0.05 (embeddings via API; cached so re-runs are free).
