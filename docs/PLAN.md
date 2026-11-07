@@ -14,24 +14,24 @@ Single source of truth for the project. Each part is built in its own session: r
 | Topic | Decision |
 |---|---|
 | Team | Solo |
-| Form | Real Python package (`src/sr_pipeline`, CLI) + Colab demo notebook |
+| Form | Real Python package (`src/sr_pipeline`) run from the command line on the Mac; no Colab (decided 2026-11-07) |
 | LLM | `gpt-4o-mini` now; model configurable **per agent** (cheap model for screening, strong model for extraction/synthesis later) |
 | Orchestration | LLM **Coordinator** chooses the next stage after every step; a **code guardrail** enforces PRISMA prerequisites; refusals are logged |
 | Sources | OpenAlex + PubMed + arXiv (free); paid sources optional later |
 | Full text | Open-access only (PMC, arXiv); others screened on abstract and flagged |
-| RAG | FAISS (dense, sentence-transformers) + BM25 (sparse) hybrid, cross-encoder re-ranker |
+| RAG | FAISS (dense, OpenAI `text-embedding-3-small` embeddings) + BM25 (sparse) hybrid, LLM re-ranker. No torch: PyTorch stops at 2.2.2 on Intel Macs and conflicts with NumPy 2, so local embedding / cross-encoder models are not used |
 | Human in the loop | LangGraph `interrupt` at (1) protocol approval, (2) unresolved screening conflicts; `--auto` skips both |
 | Synthesis | Narrative always; effect-size table + forest plot only when data are comparable |
 | Evaluation | 3 demo topics (chosen later), each with a published review as gold standard; metrics pluggable per field |
-| Python | 3.11 locally (matches Colab), `.venv` |
+| Python | 3.11, `.venv` on the Mac (Intel i7, 16 GB) |
 
 ## 2. Conventions
 
 - Commits: author `yassirtl`, short plain messages, **no AI / assistant attribution** anywhere (commits, files, README).
 - Notebook answers use the label "Answer:".
-- No API key on the Mac: all local tests use a scripted fake LLM. Real runs happen in Colab with the user's key (Colab Secrets, `getpass` fallback); the user downloads the run outputs and they are added to the repo.
+- Tests never use the network or the API: scripted fake LLM and recorded API responses. Real runs happen locally on the Mac; the key is in a git-ignored `.env` (`OPENAI_API_KEY=...`), loaded by the config. The user runs real commands (`sr-review ...`) and the outputs in `runs/` are used for the report.
 - Every part ends with: tests green, `docs/PLAN.md` progress updated, commit + push, then a plain-language explanation to the user (student tone, only claim what outputs show).
-- Pin dependencies (`~=`) so Colab installs stay stable.
+- Pin dependencies (`~=`) so installs stay stable.
 
 ## 3. Architecture
 
@@ -93,7 +93,7 @@ pyproject.toml   README.md   docs/PLAN.md
 protocols/template.yaml
 src/sr_pipeline/  config.py state.py guardrail.py coordinator.py llm.py graph.py audit.py cli.py
                   agents/  sources/  rag/  reporting/
-evaluation/  notebooks/demo.ipynb  tests/
+evaluation/  tests/
 runs/<run_id>/   (git-ignored: state, audit.jsonl, outputs)
 ```
 
@@ -122,7 +122,7 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 - **Build:** `config.py` (YAML + env; per-agent model; `max_records`; paths), `protocols/template.yaml` (PICO, inclusion/exclusion, databases, years, languages, study designs), `agents/planner.py` (question → protocol), protocol approval `interrupt` (skipped with `auto=True`), `audit.py` (JSONL writer in `runs/<run_id>/`).
 - **From the 2b review:** the LLM cache dir (`.cache/llm`) is relative to the working directory; make it a config path (absolute, project root) so Colab and local runs find the same cache.
 - **Done when:** fake-LLM test produces a valid protocol; interrupt pauses and resumes with edits.
-- **User runs (Colab):** planner on one question, < 1 min, < $0.01.
+- **User runs:** planner on one question, < 1 min, < $0.01 (skipped at build time; first real call happens in Part 4).
 - **Explain:** PICO, why the protocol is fixed first, interrupt/resume.
 
 ### Part 4: Search strategy + source connectors
@@ -132,9 +132,9 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 - **Explain:** Boolean logic, MeSH, why several databases, rate limits.
 
 ### Part 5: Retrieval, deduplication, full text, RAG
-- **Build:** `agents/retrieval.py`; dedup (DOI exact, then normalized-title fuzzy match) with counts for PRISMA; PDF download for open-access + text extraction; chunking; `rag/` hybrid index (FAISS + BM25, reciprocal rank fusion), cross-encoder re-ranker; index saved per run.
+- **Build:** `agents/retrieval.py`; dedup (DOI exact, then normalized-title fuzzy match) with counts for PRISMA; PDF download for open-access + text extraction; chunking; `rag/` hybrid index (FAISS over OpenAI embeddings + BM25 via `rank-bm25`, reciprocal rank fusion), LLM re-ranker (gpt-4o-mini scores the top ~20 passages); embeddings cached on disk; index saved per run.
 - **Done when:** dedup tests on crafted duplicates; retrieval test returns the right chunk for a known query.
-- **User runs (Colab):** index ~150 papers, 5–15 min, $0 (local embeddings). Heavy install (torch) 3–5 min.
+- **User runs:** index ~150 papers, 5–15 min, ~$0.05 (embeddings via API; cached so re-runs are free).
 - **Explain:** dense vs sparse search, fusion, re-ranking, why chunk.
 - **Coordinator rule example:** too few records → may send back to search_strategy.
 
@@ -142,7 +142,7 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 - **Build:** `agents/screening.py`; screener A (strict prompt) and B (lenient prompt), structured `ScreeningDecision(decision, criterion, reason, quote)`; adjudicator on disagreement; unresolved → `interrupt` (or auto-include in `--auto`); full-text round uses RAG passages per criterion; Cohen's kappa computed; PRISMA counts updated; concurrency + cache.
 - **From the 2b review:** (a) when screening runs concurrently, write cache files atomically (temp file + rename) so a half-written file never breaks a read; (b) after a retrieval re-run, filter `latest()` results to papers still in `unique_records`, so a paper dropped by the new search does not keep an old decision.
 - **Done when:** fake-LLM tests for agree / disagree / adjudicate / human paths; kappa unit test.
-- **User runs (Colab):** ~50 abstracts first (~2 min, ~$0.05), then full topic (10–20 min, ~$0.50–1).
+- **User runs:** ~50 abstracts first (~2 min, ~$0.05), then full topic (10–20 min, ~$0.50–1).
 - **Explain:** dual screening, adjudication, kappa, recall over precision at screening.
 
 ### Part 7: Extraction + risk of bias
@@ -158,10 +158,10 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 ### Part 9: Reporting, exports, CLI
 - **Build:** `reporting/` PRISMA 2020 flow diagram (matplotlib, from counts), manuscript Markdown + DOCX, evidence tables CSV, BibTeX, run summary (time, tokens, cost); `cli.py`: `sr-review "question" [--auto] [--config] [--resume RUN_ID]`.
 - **Done when:** full fake-LLM end-to-end run produces every output file.
-- **User runs (Colab):** first full real review, 30–60 min, ~$1–3.
+- **User runs:** first full real review, 30–60 min, ~$1–3.
 
-### Part 10: Evaluation, notebook, documentation, video
-- **Build:** `evaluation/` (recall/precision vs published review's included list, accuracy vs user-labelled sample, kappa, time/cost vs manual estimate; pluggable metrics); `notebooks/demo.ipynb` (Colab badge, secrets); README (install, config, run, usage, results); technical report PDF incl. individual contribution; 3 topics chosen with the user.
+### Part 10: Evaluation, documentation, video
+- **Build:** `evaluation/` (recall/precision vs published review's included list, accuracy vs user-labelled sample, kappa, time/cost vs manual estimate; pluggable metrics); README (install, config, run, usage, results); technical report PDF incl. individual contribution; 3 topics chosen with the user.
 - **User does:** pick 3 topics + gold lists (1–2 h), label ~30 abstracts (~1 h), 3 full runs (~3 h, ~$5–15 total), record video (1–2 h).
 
 ## 5. Estimates
@@ -177,7 +177,7 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 | 2 Skeleton | done | 2026-11-07 · 7 tests green; LLM disk cache + token cost (§3.4) done in 2b |
 | 2b Skeleton fixes (cache + cost, latest decision, coordinator fallback) | done | 2026-11-07 · 15 tests green; usage via `call_with_usage()`; stages must tag items with `stage_round()` and read via `latest()` |
 | 3 Config + Planner | done | 2026-11-07 · 27 tests green; `config.yaml` + env (`SR_*`), paths absolute under project root (cache fix from 2b); `protocol.py` (LLM drafts PICO/criteria, template fixes databases/years/languages); approval is a separate non-stage node (`build_graph(approve_protocol=True)`), resume with `True` or `{"edits": {...}}`; `AuditWriter.sync()` writes only new entries; Colab run skipped (tests only) |
-| 4 Search + sources | next | |
+| 4 Search + sources | next | first: add `.env` loading (python-dotenv) to config, remove Colab wording from config comments/docstrings; then a real Planner + search smoke run on the Mac |
 | 5 Retrieval + RAG | todo | |
 | 6 Screening | todo | |
 | 7 Extraction + RoB | todo | |
