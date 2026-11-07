@@ -117,6 +117,8 @@ DTA = {"paper_id": "dta", "title": "WATCH accuracy study", "year": 2020,
        "abstract": "A diagnostic accuracy study of a smartwatch.", "round": 1}
 RCT = {"paper_id": "rct", "title": "TRIAL of watches", "year": 2021,
        "abstract": "A randomized trial of watch feedback.", "round": 1}
+UNV = {"paper_id": "unv", "title": "UNVERIFIED ring study", "year": 2019,
+       "abstract": "Smart ring readings were compared with Holter monitoring.", "round": 1}
 
 
 def diag_index(folder):
@@ -124,13 +126,18 @@ def diag_index(folder):
         Section(title="Methods", text="This prospective diagnostic accuracy study enrolled "
                 "100 patients. " * 5),
         Section(title="Table 2", text=ROW)])
-    HybridIndex.build(chunk_paper(DTA, ft) + chunk_paper(RCT, None), FakeEmbedder()).save(folder)
+    HybridIndex.build(chunk_paper(DTA, ft) + chunk_paper(RCT, None) + chunk_paper(UNV, None),
+                      FakeEmbedder()).save(folder)
 
 
 def diag_extractor(prompt):
     if prompt.startswith("You extract diagnostic accuracy results"):
-        assert "WATCH" in prompt, "2x2 call made for a non-diagnostic study"
-        return DiagnosticExtraction(tables=[two(chunk_id="")])
+        assert "TRIAL" not in prompt, "2x2 call made for a non-diagnostic study"
+        return DiagnosticExtraction(tables=[two(chunk_id="")] if "WATCH" in prompt else [])
+    if "UNVERIFIED" in prompt:  # design quote not in the passages: category unverified
+        return {"fields": [{"key": "design", "quote": "a diagnostic accuracy study",
+                            "value": "diagnostic accuracy study"}],
+                "design_category": "diagnostic accuracy study", "results": []}
     if "WATCH" in prompt:
         return {"fields": [{"key": "design", "quote": "diagnostic accuracy study",
                             "value": "diagnostic accuracy study"}],
@@ -146,18 +153,23 @@ def test_two_by_two_extracted_for_diagnostic_studies_only(tmp_path):
                        "reranker": lambda p: {"scores": []}})
     node = make_extraction(llm, FakeEmbedder(), index_dir=tmp_path / "idx", workers=1,
                            use_rerank=False)
-    update = node({"protocol": DIAG_PROTOCOL, "unique_records": [DTA, RCT],
-                   "included": ["dta", "rct"], "ft_decisions": [],
+    update = node({"protocol": DIAG_PROTOCOL, "unique_records": [DTA, RCT, UNV],
+                   "included": ["dta", "rct", "unv"], "ft_decisions": [],
                    "completed_stages": list(STAGES[:STAGES.index("extraction")])})
     ext = {e["paper_id"]: e for e in update["extractions"]}
     (t,) = ext["dta"]["diagnostic"]
     assert t["complete"] and t["consistent"] and t["chunk_id"].startswith("dta::")
     assert ext["rct"]["diagnostic"] is None                 # RoB 2 study: no 2x2 call
+    # Classified diagnostic without a verified design quote: checklist RoB, 2x2 still tried.
+    assert not ext["unv"]["design_category_verified"] and ext["unv"]["diagnostic"] == []
+    rob = {r["paper_id"]: r["tool"] for r in update["risk_of_bias"]}
+    assert rob == {"dta": "quadas2", "rct": "rob2", "unv": "checklist"}
     diag_calls = [p for a, p in llm.calls if a == "extraction"
                   and p.startswith("You extract diagnostic")]
-    assert len(diag_calls) == 1 and "[Table 2]" in diag_calls[0]   # table chunk always added
+    assert len(diag_calls) == 2
+    assert "[Table 2]" in next(p for p in diag_calls if "WATCH" in p)  # tables always added
     assert "diagnostic_tables" in ext["dta"]["passages"]
-    assert update["audit_log"][0]["two_by_two"] == {"studies_assessed": 1, "reported": 1,
+    assert update["audit_log"][0]["two_by_two"] == {"studies_assessed": 2, "reported": 1,
                                                     "complete_consistent": 1}
 
 

@@ -975,15 +975,18 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
 
         rob = _parallel(rob_one, plan, workers)
 
-        # Phase 3 (Part 8, step 0): 2x2 tables for diagnostic accuracy studies only (the
-        # studies assessed with QUADAS-2: verified diagnostic design, or the protocol's
-        # single design). Retrieval here, LLM calls in threads.
+        # Phase 3 (Part 8, step 0): 2x2 tables for diagnostic accuracy studies only: those
+        # assessed with QUADAS-2, or classified as diagnostic even without a verified
+        # design quote (T1/T2 restrict no design, so the protocol cannot decide; the 2x2
+        # check verifies every number itself, a wrong guess costs one call). Retrieval
+        # here, LLM calls in threads.
         dq = {"diagnostic": DIAGNOSTIC_QUERY}
         diag_plan = [(paper, item, _retrieve(index, paper["paper_id"], dq,
                                              in_index[paper["paper_id"]]),
                       table_hits(index, paper["paper_id"], DIAGNOSTIC_QUERY,
                                  diagnostic_tables))
-                     for paper, item, tool, *_ in plan if tool.key == "quadas2"]
+                     for paper, item, tool, *_ in plan if tool.key == "quadas2"
+                     or item["design_category"] == "diagnostic accuracy study"]
 
         def diag_one(args):
             paper, ext_item, dhits, dtables = args
