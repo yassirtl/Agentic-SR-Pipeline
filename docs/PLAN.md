@@ -111,6 +111,13 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 - **User runs:** `.venv/bin/pip install -e ".[dev]"`, `.venv/bin/pytest -v` (seconds, $0).
 - **Explain:** state reducers, the guardrail table and freshness rule, supervisor loop, checkpointer and thread id.
 
+### Part 2b: Skeleton fixes (from the Part 2 review)
+- **Fix 1: LLM cache + cost (§3.4).** In `llm.py`, wrap `OpenAILLM.structured_call` with a disk cache under `.cache/llm/` keyed on sha256 of (model, schema name + JSON schema, prompt); a cache hit makes no API call. Capture token usage (`with_structured_output(..., include_raw=True)` → `usage_metadata`) and compute cost from a per-model price table (input/output per 1M tokens, editable). Expose usage per call so nodes can add `{model, input_tokens, output_tokens, cost_usd, cached}` to their audit entry. Build the ChatOpenAI client once per model, not per call.
+- **Fix 2: no duplicate decisions after a loop-back.** Every decision/extraction item carries `paper_id` and `round` (the stage's run count, from `completed_stages`). Add a helper `latest(items, key="paper_id")` that keeps only the most recent round per paper; later parts (6, 7, 8) must read decisions through it. The full history stays in the state for the audit trail.
+- **Fix 3: Coordinator never crashes.** If `structured_call` raises (bad JSON, validation error, API error after retries), fall back to `earliest_stale(completed)` and log `{outcome: "llm_error", error, substituted}`; the step still counts toward the budget.
+- **Done when:** new tests pass: cache hit returns the same object without calling the model (fake chat model / monkeypatch, no network); cost computed from fake usage; `latest()` keeps the last round per paper; a coordinator whose LLM raises still completes the review with `llm_error` entries. All Part 2 tests still pass.
+- **Explain:** why caching is the real reproducibility guarantee, how cost is measured, why history is kept but only the latest decision is used.
+
 ### Part 3: Config, protocol template, Planner
 - **Build:** `config.py` (YAML + env; per-agent model; `max_records`; paths), `protocols/template.yaml` (PICO, inclusion/exclusion, databases, years, languages, study designs), `agents/planner.py` (question → protocol), protocol approval `interrupt` (skipped with `auto=True`), `audit.py` (JSONL writer in `runs/<run_id>/`).
 - **Done when:** fake-LLM test produces a valid protocol; interrupt pauses and resumes with edits.
@@ -166,7 +173,8 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 |---|---|---|
 | 1 Architecture + strategy deck | done | 2026-11-07 |
 | 2 Skeleton | done | 2026-11-07 · 7 tests green; LLM disk cache + token cost (§3.4) deferred to a later part |
-| 3 Config + Planner | next | |
+| 2b Skeleton fixes (cache + cost, latest decision, coordinator fallback) | next | from the Part 2 review |
+| 3 Config + Planner | todo | |
 | 4 Search + sources | todo | |
 | 5 Retrieval + RAG | todo | |
 | 6 Screening | todo | |
