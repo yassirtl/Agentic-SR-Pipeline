@@ -11,7 +11,8 @@ models:              # per-agent model; agents not listed use default_model
   # adjudicator: gpt-4o       # third reviewer on disagreements
   # extraction: gpt-4o
   # risk_of_bias: gpt-4o
-  # synthesis: gpt-4o
+  # synthesis: gpt-4o        # writes the narrative (numbers are computed by code)
+  # critic: gpt-4o            # checks the narrative against the evidence tables
 
 max_records: 3000    # per database: download ceiling; more hits = "not retrieved" in PRISMA
 max_steps: 40        # coordinator step budget
@@ -44,6 +45,8 @@ ft_passages: 5
 ft_rerank: true      # re-rank each criterion's passages with the LLM (about half the full-text cost)
 # Extraction + risk of bias (Part 7) reuse ft_candidates / ft_passages / ft_rerank and
 # screening_workers; models: 'extraction' and 'risk_of_bias' agents (see models above).
+# Synthesis + critic (Part 8): meta-analysis needs >= 3 comparable studies (code constant
+# MIN_POOL); the critic sends the synthesis back at most 2 times (MAX_LOOPS).
 
 # Relative paths are resolved under the project root.
 cache_dir: .cache/llm

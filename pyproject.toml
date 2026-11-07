@@ -24,6 +24,8 @@ dependencies = [
     "rank-bm25~=0.2.2",
     "snowballstemmer~=3.0",  # BM25 word stems (pure Python)
     "openai~=3.46",       # embeddings (also installed by langchain-openai)
+    # Part 8: forest plots (statistics are plain Python, no SciPy)
+    "matplotlib~=3.10.0",
 ]
 
 [project.optional-dependencies]

@@ -32,6 +32,8 @@ T3:
   review: Li 2024, Front Psychol 15:1484172, PMC11427357
   gold: gold/T3.csv
   study_designs: [randomized controlled trial]
+  # Part 8: direction of effect (GDS, BDI, PHQ-9: a lower score = fewer symptoms).
+  outcome_directions: {depressive symptoms: lower}
   years: {start: null, end_date: 2024-01-07}
   search_date_source: '"from establishing the database to January 7, 2024"'
   their_databases: [Cochrane Library, Web of Science, PubMed, Embase, CNKI, Wanfang]

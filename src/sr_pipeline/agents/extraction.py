@@ -61,6 +61,16 @@ information, QUADAS-2 / checklist: unclear), flag ``unverified_<domain>``. RoB 2
 also needs a quote naming how allocation was concealed or generated (RoB 2 algorithm;
 "randomly assigned" alone -> some concerns, flag ``d1_no_method``).
 
+**Diagnostic 2x2 tables** (Part 8, step 0): studies assessed with QUADAS-2 get one more
+call (``DiagnosticExtraction``) over a 2x2 query plus the paper's table chunks: per index
+test, ``index_test``, ``reference_standard``, ``threshold``, ``tp``/``fp``/``fn``/``tn`` and
+the printed sensitivity / specificity, each number verified in the quote. A missing cell is
+never derived; cells that disagree with the printed sensitivity / specificity are flagged
+(``check_two_by_two``). Other studies have ``diagnostic: None``.
+
+**Tables**: each outcome query also receives the paper's best table chunks (JATS tables
+are chunks of their own), added after re-ranking.
+
 Rounds: items carry ``paper_id`` and ``round``; read them through ``latest()``. An LLM
 error never stops the stage: the item is written with every field ``not reported`` (or
 every domain at the no-evidence level) and an ``llm_error`` flag.
@@ -81,7 +91,7 @@ from ..llm import LLM, Usage
 from ..rag import HybridIndex, chunk_paper, rerank
 from ..rag.index import tokenize
 from ..state import ReviewState, latest, stage_round
-from .screening import _parallel, _sum_usage, quote_found
+from .screening import _norm, _parallel, _sum_usage, quote_found
 
 NOT_REPORTED = "not reported"
 
@@ -219,6 +229,33 @@ class OutcomeResult(BaseModel):
 
 DesignCategory = Literal["randomized trial", "non-randomized intervention study",
                          "diagnostic accuracy study", "other"]
+
+
+class TwoByTwo(BaseModel):
+    """Part 8, step 0: one diagnostic 2x2 table (one index test at one threshold)."""
+    index_test: str = Field(description="Index test as named in the paper, e.g. 'Apple Watch "
+                            "ECG app', 'GPT-4 zero-shot'.")
+    reference_standard: str = Field("", description="Reference standard as named, e.g. "
+                                    "'12-lead ECG read by cardiologists', 'human reviewers'.")
+    threshold: str = Field("", description="Threshold / cut-off / setting, as printed; empty "
+                           "if none.")
+    quote: str = Field("", description="Exact words (a table row or sentences) printing every "
+                       "number below; '...' between separate parts.")
+    chunk_id: str = ""
+    tp: int | None = Field(None, description="True positives, only if printed.")
+    fp: int | None = Field(None, description="False positives, only if printed.")
+    fn: int | None = Field(None, description="False negatives, only if printed.")
+    tn: int | None = Field(None, description="True negatives, only if printed.")
+    sensitivity: float | None = Field(None, description="Sensitivity as printed (e.g. 94.2 "
+                                      "for 94.2%, or 0.942); null if not printed.")
+    specificity: float | None = Field(None, description="Specificity as printed; null if "
+                                      "not printed.")
+
+
+class DiagnosticExtraction(BaseModel):
+    tables: list[TwoByTwo] = Field(default_factory=list, description="One entry per index "
+                                   "test (and threshold) with accuracy results; empty if the "
+                                   "passages report none.")
 
 
 class Extraction(BaseModel):
@@ -436,6 +473,38 @@ def locate(quote: str, chunks: list[dict], claimed: str = "") -> str:
     return next((c["chunk_id"] for c in chunks if quote_found(quote, c["text"])), "")
 
 
+def table_quote_found(quote: str, chunks: list[dict]) -> str:
+    """Chunk id of the one passage holding a table-row quote that skips columns, else ''.
+
+    Seen live (Part 8): from Makizako's Table 3 the model quoted the exercise and control
+    columns of the GDS-15 row and left out the horticulture columns without writing '...',
+    so the exact check refused a correct reading. A quote with '|' is split into cells; the
+    cells must appear whole and in order inside ONE passage (never stitched across
+    passages). Numbers are still checked against the quote itself."""
+    if "|" not in quote:
+        return ""
+    parts = [f" {p} " for p in (_norm(x) for x in re.split(r"\||\.\.\.|…", quote)) if p]
+    for c in chunks:
+        hay, pos = f" {_norm(c['text'])} ", 0
+        for part in parts:
+            i = hay.find(part, pos)
+            if i < 0:
+                break
+            pos = i + len(part) - 1
+        else:
+            return c["chunk_id"]
+    return ""
+
+
+def _find_quote(quote: str, chunks: list[dict], text: str, claimed: str
+                ) -> tuple[bool, str, bool]:
+    """(found, chunk id, found only as a table row with skipped columns)."""
+    if quote and quote_found(quote, text):
+        return True, locate(quote, chunks, claimed), False
+    cid = table_quote_found(quote or "", chunks)
+    return bool(cid), cid, bool(cid)
+
+
 def check_fields(raw: list[dict], specs: list[FieldSpec], chunks: list[dict]
                  ) -> tuple[dict[str, dict], list[str]]:
     """Field values checked by code (see module docstring). Returns {key: field}, flags."""
@@ -484,10 +553,13 @@ def check_results(raw: list[dict], outcome_ids: list[str], chunks: list[dict],
             continue
         seen.add(oid)
         quote = (r.get("quote") or "").strip()
-        if not quote or not quote_found(quote, text):
+        found, cid, table_row = _find_quote(quote, chunks, text, r.get("chunk_id") or "")
+        if not found:
             flags.append(f"result_quote_not_found_{oid}")
             out.append({"outcome": oid, "status": NOT_REPORTED, "claimed": r})
             continue
+        if table_row:
+            flags.append(f"table_row_quote_{oid}")
         dropped = []
 
         def keep(x, where, *also):
@@ -520,9 +592,78 @@ def check_results(raw: list[dict], outcome_ids: list[str], chunks: list[dict],
             out.append({"outcome": oid, "status": NOT_REPORTED, "claimed": r,
                         "numbers_dropped": dropped})
             continue
-        out.append({"outcome": oid, "status": "reported", "quote": quote,
-                    "chunk_id": locate(quote, chunks, r.get("chunk_id") or ""),
+        out.append({"outcome": oid, "status": "reported", "quote": quote, "chunk_id": cid,
                     "arms": arms, "estimates": ests, "numbers_dropped": dropped})
+    return out, flags
+
+
+def _tolerance(x: float) -> float:
+    """Half a unit of the last printed decimal: 94.2 -> 0.05, 94 -> 0.5, 0.942 -> 0.0005."""
+    text = f"{x:.10g}"
+    decimals = len(text.split(".")[1]) if "." in text else 0
+    return 0.5 * 10 ** -decimals + 1e-9
+
+
+def check_two_by_two(raw: list[dict], chunks: list[dict]) -> tuple[list[dict], list[str]]:
+    """Diagnostic 2x2 tables checked by code (Part 8, step 0).
+
+    - quote found in the passages, else the table is ``not reported``;
+    - every cell and the printed sensitivity / specificity must be printed in the quote,
+      else that number becomes ``None`` (``numbers_dropped``); a missing cell is never
+      derived from n, prevalence or sensitivity (same rule as totals in Part 7);
+    - ``complete`` = the four cells verified;
+    - consistency: when the cells and a printed sensitivity (specificity) both exist,
+      TP/(TP+FN) (TN/(TN+FP)) must equal the printed value within half a unit of its last
+      printed digit (percent if > 1). A mismatch is flagged (``consistent: False``), never
+      fixed: the pooled analysis leaves such a table out.
+    """
+    text = "\n".join(c["text"] for c in chunks)
+    out, flags = [], []
+    for i, t in enumerate(raw, 1):
+        quote = (t.get("quote") or "").strip()
+        base = {k: t.get(k) or "" for k in ("index_test", "reference_standard", "threshold")}
+        found, cid, table_row = _find_quote(quote, chunks, text, t.get("chunk_id") or "")
+        if not found:
+            flags.append(f"2x2_quote_not_found_{i}")
+            out.append({**base, "status": NOT_REPORTED, "claimed": t})
+            continue
+        dropped, cells = [], {}
+        for k in ("tp", "fp", "fn", "tn", "sensitivity", "specificity"):
+            x = t.get(k)
+            if x is not None and not number_in(float(x), quote):
+                dropped.append(f"{k}={x:g}")
+                x = None
+            cells[k] = x
+        if table_row:
+            flags.append(f"table_row_quote_2x2_{i}")
+        if dropped:
+            flags.append(f"number_not_in_quote_2x2_{i}")
+        if all(cells[k] is None for k in cells):
+            flags.append(f"2x2_no_numbers_{i}")
+            out.append({**base, "status": NOT_REPORTED, "claimed": t,
+                        "numbers_dropped": dropped})
+            continue
+        complete = all(cells[k] is not None for k in ("tp", "fp", "fn", "tn"))
+        item = {**base, "status": "reported", "quote": quote, "chunk_id": cid, **cells,
+                "complete": complete, "consistent": None, "numbers_dropped": dropped}
+        if not complete:
+            flags.append(f"2x2_incomplete_{i}")
+        else:
+            checks = []
+            for name, num, den in (("sensitivity", cells["tp"], cells["tp"] + cells["fn"]),
+                                   ("specificity", cells["tn"], cells["tn"] + cells["fp"])):
+                printed = cells[name]
+                if printed is None or den == 0:
+                    continue
+                computed = num / den * (100 if printed > 1 else 1)
+                ok = abs(computed - printed) <= _tolerance(printed)
+                checks.append(ok)
+                if not ok:
+                    flags.append(f"2x2_inconsistent_{name}_{i}")
+                    item.setdefault("mismatch", {})[name] = {"printed": printed,
+                                                             "from_cells": round(computed, 4)}
+            item["consistent"] = all(checks) if checks else None
+        out.append(item)
     return out, flags
 
 
@@ -609,6 +750,29 @@ def extraction_prompt(protocol: dict, paper: dict, chunks: list[dict],
     )
 
 
+DIAGNOSTIC_QUERY = ("Diagnostic accuracy of the index test against the reference standard: "
+                    "true positives, false positives, false negatives, true negatives (2x2 "
+                    "table, confusion matrix), sensitivity, specificity, threshold or cut-off")
+
+
+def diagnostic_prompt(protocol: dict, paper: dict, chunks: list[dict]) -> str:
+    return (
+        "You extract diagnostic accuracy results (2x2 tables) from one study for a PRISMA "
+        "2020 systematic review.\n"
+        f"Review question: {protocol.get('question', '')}\n\n"
+        "Rules:\n"
+        "- One entry per index test (and per threshold or setting) whose accuracy against "
+        "the reference standard is reported.\n"
+        "- First copy the exact words (a table row or sentences) printing the numbers, give "
+        "the passage id, then the numbers.\n"
+        "- tp, fp, fn, tn: only if each count is printed. Never compute a cell from the "
+        "number of participants, prevalence, sensitivity or specificity: leave it null.\n"
+        "- sensitivity / specificity: as printed (94.2 for '94.2%'), null if not printed.\n"
+        "- If the passages report no accuracy result, return an empty list.\n\n"
+        f"Study: {paper.get('title') or '(no title)'}\n\n{evidence_block(chunks)}"
+    )
+
+
 def rob_prompt(protocol: dict, paper: dict, tool: Tool, chunks: list[dict],
                outcome: str | None) -> str:
     domains = "\n".join(f"  {did}: {name}. {what}" for did, name, what in tool.domains)
@@ -642,6 +806,17 @@ def _paper_chunks(pid: str, paper: dict, index: HybridIndex | None) -> list[dict
     return chunk_paper(paper, None)
 
 
+def table_hits(index: HybridIndex | None, pid: str, query: str, top: int) -> list[dict]:
+    """The paper's table chunks (section 'Table ...', JATS only), best first for the query,
+    at most ``top``. Results often sit only in a table (Part 7: Makizako's GDS-15 means are
+    in its Table 3, which the outcome query never reached)."""
+    if index is None or top <= 0 or pid not in index.rows_of:
+        return []
+    n = len(index.rows_of[pid])
+    hits = index.search(query, k=n, paper_ids=[pid], pool=n)
+    return [h for h in hits if h["section"].startswith("Table")][:top]
+
+
 def _merge(base: list[dict], groups: dict[str, list[dict]]) -> list[dict]:
     """Abstract chunks first, then each group's passages, each chunk once."""
     seen, out = set(), []
@@ -669,10 +844,14 @@ def included_papers(state: ReviewState) -> list[dict]:
 
 
 def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int = 8,
-                    passages: int = 5, candidates: int = 10, use_rerank: bool = True):
+                    passages: int = 5, candidates: int = 10, use_rerank: bool = True,
+                    table_passages: int = 3, diagnostic_tables: int = 8):
     """Extraction + risk-of-bias stage over ``included`` (see module docstring).
     ``candidates`` / ``passages`` / ``use_rerank`` share the full-text screening settings
-    (``ft_candidates``, ``ft_passages``, ``ft_rerank``)."""
+    (``ft_candidates``, ``ft_passages``, ``ft_rerank``). Each outcome query also gets the
+    paper's ``table_passages`` best table chunks; the 2x2 query of a diagnostic study gets
+    up to ``diagnostic_tables`` (Part 8, step 0). Tables are added after re-ranking, so
+    they never push a re-ranked passage out."""
     index_dir = Path(index_dir)
 
     def _retrieve(index, pid: str, queries: dict[str, str], has_index: bool
@@ -709,6 +888,9 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
                     for p in papers}
         hits = {p["paper_id"]: _retrieve(index, p["paper_id"], queries,
                                          in_index[p["paper_id"]]) for p in papers}
+        tables = {p["paper_id"]: {f"{oid}_tables": table_hits(index, p["paper_id"],
+                                                             queries[oid], table_passages)
+                                  for oid in oids} for p in papers}
 
         def extract_one(paper):
             pid = paper["paper_id"]
@@ -716,12 +898,14 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
             comparison = info.get(pid, {}).get("comparison", "")
             item = {"paper_id": pid, "round": rnd, "title": paper.get("title"),
                     "year": paper.get("year"), "fulltext_status": status,
-                    "comparison_hint": comparison, "flags": []}
+                    "comparison_hint": comparison, "flags": [],
+                    "diagnostic": None}  # list of 2x2 tables for diagnostic studies only
             if status == "abstract_only" or not in_index[pid]:
                 item["flags"].append("abstract_only")
             if not in_index[pid]:
                 item["flags"].append("not_in_index")
             ranked, usages = _rank(queries, hits[pid])
+            ranked |= {g: hs for g, hs in tables[pid].items() if hs}
             chunks = _merge(_paper_chunks(pid, paper, index), ranked)
             item["passages"] = {g: [h["chunk_id"] for h in hs] for g, hs in ranked.items()}
             try:
@@ -791,6 +975,41 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
 
         rob = _parallel(rob_one, plan, workers)
 
+        # Phase 3 (Part 8, step 0): 2x2 tables for diagnostic accuracy studies only (the
+        # studies assessed with QUADAS-2: verified diagnostic design, or the protocol's
+        # single design). Retrieval here, LLM calls in threads.
+        dq = {"diagnostic": DIAGNOSTIC_QUERY}
+        diag_plan = [(paper, item, _retrieve(index, paper["paper_id"], dq,
+                                             in_index[paper["paper_id"]]),
+                      table_hits(index, paper["paper_id"], DIAGNOSTIC_QUERY,
+                                 diagnostic_tables))
+                     for paper, item, tool, *_ in plan if tool.key == "quadas2"]
+
+        def diag_one(args):
+            paper, ext_item, dhits, dtables = args
+            pid = paper["paper_id"]
+            ranked, usages = _rank(dq, dhits)
+            if dtables:
+                ranked["diagnostic_tables"] = dtables
+            chunks = _merge(_paper_chunks(pid, paper, index), ranked)
+            ext_item["passages"] |= {g: [h["chunk_id"] for h in hs]
+                                     for g, hs in ranked.items()}
+            try:
+                ans, u = llm.call_with_usage(DiagnosticExtraction,
+                                             diagnostic_prompt(protocol, paper, chunks),
+                                             agent="extraction")
+                usages.append(u)
+                tables_, flags = check_two_by_two([t.model_dump() for t in ans.tables],
+                                                  chunks)
+                ext_item["flags"] += flags
+            except Exception as exc:
+                ext_item["flags"].append(f"llm_error_2x2: {type(exc).__name__}: {exc}"[:300])
+                tables_ = []
+            ext_item["diagnostic"] = tables_
+            return usages
+
+        diag = _parallel(diag_one, diag_plan, workers)
+
         extractions = [i for i, _, _ in ext]
         robs = [i for i, _ in rob]
         summary = extraction_summary(extractions, robs)
@@ -803,7 +1022,8 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
                            "index": str(index_dir) if index is not None else None,
                            **summary,
                            **_sum_usage([u for _, us, _ in ext for u in us]
-                                        + [u for _, us in rob for u in us])}],
+                                        + [u for _, us in rob for u in us]
+                                        + [u for us in diag for u in us])}],
         }
 
     return extraction
@@ -812,7 +1032,8 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
 # --- Summary -------------------------------------------------------------------------------------
 
 FLAG_KINDS = ("no_quote", "quote_not_found", "number_not_in_quote", "result_quote_not_found",
-              "result_no_numbers", "d1_no_method",
+              "result_no_numbers", "d1_no_method", "2x2_quote_not_found", "2x2_no_numbers",
+              "2x2_incomplete", "2x2_inconsistent", "llm_error_2x2",
               "unverified", "domain_missing", "invalid_level", "llm_error", "abstract_only",
               "not_in_index")
 
@@ -839,6 +1060,13 @@ def extraction_summary(extractions: list[dict], robs: list[dict]) -> dict:
         "reported_by_text": {k: f"{a}/{b}" for k, (a, b) in by_status.items()},
         "results_reported": sum(r["status"] == "reported" for e in extractions
                                 for r in e["results"]),
+        "two_by_two": {"studies_assessed": sum(e.get("diagnostic") is not None
+                                               for e in extractions),
+                       "reported": sum(t["status"] == "reported" for e in extractions
+                                       for t in e.get("diagnostic") or []),
+                       "complete_consistent": sum(
+                           bool(t.get("complete")) and t.get("consistent") is not False
+                           for e in extractions for t in e.get("diagnostic") or [])},
         "tools": dict(Counter(r["tool"] for r in robs)),
         "tool_chosen_by": dict(Counter(r["tool_chosen_by"] for r in robs)),
         "overall": dict(Counter(f"{r['tool']}:{r['overall']}" for r in robs)),

@@ -35,6 +35,17 @@ class PICO(BaseModel):
                                 "first; others only if the user asked for them.")
 
 
+class OutcomeDirection(BaseModel):
+    """Which values of an outcome are better for participants (Part 8: direction of effect
+    for vote counting and for reading a standardised mean difference)."""
+
+    outcome: str = Field(description="An outcome from pico.outcomes, copied word for word.")
+    better: Literal["lower", "higher", "unknown"] = Field(
+        description="Which values mean a better result: e.g. depressive symptoms -> lower, "
+                    "quality of life -> higher, diagnostic accuracy -> higher; unknown if it "
+                    "depends on the instrument.")
+
+
 class YearRange(BaseModel):
     start: int | None = Field(None, description="First publication year included (None = no limit).")
     end: int | None = Field(None, description="Last publication year included (None = no limit).")
@@ -81,6 +92,9 @@ class ProtocolDraft(BaseModel):
                     "'randomized controlled trial'). Empty if no design clearly fits.")
     design_reason: str = Field(
         "", description="One line: why these designs are suggested.")
+    outcome_directions: list[OutcomeDirection] = Field(
+        default_factory=list,
+        description="One entry per outcome: whether lower or higher values are better.")
     rationale: str = Field(description="Two or three sentences on how the question was framed.")
 
 
@@ -124,6 +138,13 @@ class Protocol(ProtocolDraft):
                                    if c in texts]
         self.criterion_tests = {c: t for c, t in self.criterion_tests.items()
                                 if c in texts and t.strip()}
+        # Directions are keyed by outcome name: same rule.
+        seen, kept = set(), []
+        for d in self.outcome_directions:
+            if d.outcome in self.pico.outcomes and d.outcome not in seen:
+                seen.add(d.outcome)
+                kept.append(d)
+        self.outcome_directions = kept
         return self
 
 
@@ -139,6 +160,14 @@ class Template(BaseModel):
     inclusion_criteria: list[str] = Field(default_factory=list)
     exclusion_criteria: list[str] = Field(default_factory=list)
     pico: dict[str, str | list[str]] = Field(default_factory=dict)
+
+
+def better_direction(protocol: dict, outcome: str) -> str:
+    """'lower' | 'higher' | 'unknown' for one outcome of a protocol dict."""
+    for d in protocol.get("outcome_directions") or []:
+        if d.get("outcome") == outcome:
+            return d.get("better") or "unknown"
+    return "unknown"
 
 
 def choose_databases(template: Template, draft: ProtocolDraft) -> tuple[list[str], str]:

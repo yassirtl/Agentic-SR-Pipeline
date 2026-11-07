@@ -99,6 +99,11 @@ def seed_protocol(protocol: dict, topic: dict) -> tuple[dict, dict]:
         out["full_text_criteria"] = list(topic.get("full_text_criteria") or [])
         out["criterion_tests"] = dict(topic.get("criterion_tests") or {})
         fields += ["full_text_criteria", "criterion_tests"]
+    if topic.get("outcome_directions"):
+        given = {str(k): str(v) for k, v in topic["outcome_directions"].items()}
+        out["outcome_directions"] = [{"outcome": k, "better": v} for k, v in given.items()] + [
+            d for d in out.get("outcome_directions") or [] if d["outcome"] not in given]
+        fields.append("outcome_directions")
     out["topic"] = topic["id"]
     out["criteria_source"] = criteria_source(topic)
     out = Protocol.model_validate(out).model_dump(mode="json")

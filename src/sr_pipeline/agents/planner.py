@@ -107,6 +107,8 @@ def build_prompt(question: str, template: Template) -> str:
         "randomized controlled trial). This is only a suggestion shown to the human, who "
         "decides; it does not change study_designs. Leave it empty if no design clearly "
         "fits.\n"
+        "- For each outcome, say whether lower or higher values are better for "
+        "participants (outcome_directions; e.g. depressive symptoms: lower).\n"
         "- Criteria must be short and testable from a title, abstract or full text. List in "
         "full_text_criteria (copied word for word) those an abstract can never show.\n"
         "- One idea per criterion; do not repeat the scope (databases, years, languages).\n"

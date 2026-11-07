@@ -2,11 +2,13 @@
 
 from pydantic import BaseModel, Field
 
+from .agents.critic import describe_qa
 from .agents.extraction import describe_extraction
 from .agents.retrieval import describe_search
 from .agents.screening import describe_screening
+from .agents.synthesis import describe_synthesis
 from .guardrail import (MAX_STEPS, PREREQUISITES, STAGES, StageName, check_move,
-                        earliest_stale, fresh_stages)
+                        earliest_stale, fresh_stages, is_fresh)
 from .llm import LLM
 from .state import ReviewState
 
@@ -36,10 +38,25 @@ def summarize_state(state: ReviewState) -> str:
         lines.append(search)
     lines += describe_screening(state)
     lines += describe_extraction(state)
-    issues = state.get("qa_report", {}).get("issues", [])
-    if issues:
-        lines.append("Last critic issues: " + "; ".join(map(str, issues)))
+    lines += describe_synthesis(state)
+    lines += describe_qa(state)
     return "\n".join(lines)
+
+
+def loop_rule(proposed: str, state: ReviewState) -> str | None:
+    """Code rule on the critic loop (Part 8): once the critic has judged the current
+    synthesis, going back to synthesis is allowed only if its report says ``loop_back``
+    (blockers found and loops left). Returns the refusal reason, or None. Without a QA
+    report (placeholder critic) there is no rule."""
+    completed = state.get("completed_stages", [])
+    qa = state.get("qa_report")
+    if proposed != "synthesis" or not qa or not is_fresh("critic", completed):
+        return None
+    if qa.get("loop_back"):
+        return None
+    why = ("no blocker issues" if qa.get("passed") else
+           f"loop budget spent ({qa.get('loops_used')}/{qa.get('max_loops')})")
+    return f"critic loop not allowed: {why}"
 
 
 def build_prompt(state: ReviewState) -> str:
@@ -52,7 +69,9 @@ def build_prompt(state: ReviewState) -> str:
         "If retrieval returned too few unique records to screen (fewer than the search "
         "target's minimum) or a database failed, you may run 'search_strategy' again.\n"
         "If screening included no study at all, the search may have missed the topic: you "
-        "may run 'search_strategy' again (at most once for this reason).\n\n"
+        "may run 'search_strategy' again (at most once for this reason).\n"
+        "After 'critic': if its report says loop_back=True, run 'synthesis' again (the "
+        "critic's blocker issues are given to it); otherwise run 'report'.\n\n"
         f"Current state:\n{summarize_state(state)}"
     )
 
@@ -78,6 +97,8 @@ def coordinator_step(state: ReviewState, llm: LLM, max_steps: int = MAX_STEPS) -
         return {"next_stage": stage, "steps_taken": steps + 1, "audit_log": [entry]}
 
     stage, reason = check_move(decision.next, completed)
+    if reason is None and (rule := loop_rule(stage, state)):
+        stage, reason = earliest_stale(completed) or "report", rule
 
     entry = {"node": "coordinator", "step": steps + 1, "proposed": decision.next,
              "rationale": decision.rationale, **usage.as_dict()}
