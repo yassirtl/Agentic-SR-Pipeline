@@ -23,7 +23,7 @@ dependencies = [
     "faiss-cpu~=1.10.0",  # 1.11+ ships no Intel Mac (x86_64) wheel
     "rank-bm25~=0.2.2",
     "snowballstemmer~=3.0",  # BM25 word stems (pure Python)
-    "openai>=1.40",       # embeddings (already installed with langchain-openai)
+    "openai~=3.46",       # embeddings (also installed by langchain-openai)
 ]
 
 [project.optional-dependencies]
