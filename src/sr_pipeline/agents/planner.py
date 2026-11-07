@@ -38,6 +38,7 @@ from langgraph.types import interrupt
 from ..llm import LLM
 from ..protocol import (Protocol, ProtocolDraft, ProtocolDraftAuto, Template,
                         choose_databases, deep_merge)
+from ..evaluation.topics import seed_protocol, topic_template
 from ..state import ReviewState, stage_round
 
 
@@ -117,9 +118,14 @@ def build_prompt(question: str, template: Template) -> str:
     )
 
 
-def make_planner(llm: LLM, template: Template):
+def make_planner(llm: LLM, template: Template, topic: dict | None = None):
+    """``topic`` (an entry of evaluation/topics.yaml, see ``evaluation.topics``): evaluation
+    run; its scope and criteria go into the template, and override the draft exactly."""
+    if topic is not None:
+        template = topic_template(template, topic)
+
     def planner(state: ReviewState) -> dict:
-        question = state["question"]
+        question = topic["question"] if topic is not None else state["question"]
         schema = ProtocolDraftAuto if template.databases == "auto" else ProtocolDraft
         draft, usage = llm.call_with_usage(schema, build_prompt(question, template),
                                            agent="planner")
@@ -134,8 +140,12 @@ def make_planner(llm: LLM, template: Template):
                             databases=databases, database_reason=reason,
                             years=template.years, languages=template.languages)
         completed = state.get("completed_stages", [])
+        protocol_dict, seeded = protocol.model_dump(mode="json"), {}
+        if topic is not None:
+            protocol_dict, seeded = seed_protocol(protocol_dict, topic)
+            seeded = {"seeded": {k: v for k, v in seeded.items() if k != "event"}}
         return {
-            "protocol": protocol.model_dump(mode="json"),
+            "protocol": protocol_dict,
             "completed_stages": ["planner"],
             "audit_log": [{"node": "planner", "step": state.get("steps_taken", 0),
                            "round": stage_round("planner", completed),
@@ -146,6 +156,7 @@ def make_planner(llm: LLM, template: Template):
                            "suggested_designs": protocol.suggested_designs,
                            "design_reason": protocol.design_reason,
                            "design_suggestion": suggestion_status(protocol, accepted=False),
+                           "criteria_source": protocol_dict["criteria_source"], **seeded,
                            **usage.as_dict()}],
         }
 
@@ -178,6 +189,10 @@ def apply_answer(protocol: dict, answer) -> tuple[Protocol, dict, bool]:
         if not protocol.get("suggested_designs"):
             raise ValueError("accept_suggested_designs: the Planner suggested no design")
         edits.setdefault("study_designs", list(protocol["suggested_designs"]))
+    if {"inclusion_criteria", "exclusion_criteria"} & set(edits) and \
+            "criteria_source" not in edits:
+        base = protocol.get("criteria_source") or "Planner (LLM draft)"
+        edits["criteria_source"] = f"{base}; edited by human at approval"
     try:
         return Protocol.model_validate(deep_merge(protocol, edits)), edits, accepted
     except ValidationError as exc:
@@ -194,6 +209,7 @@ def protocol_approval(state: ReviewState) -> dict:
         answer = interrupt({"kind": "protocol_approval", "protocol": protocol, "error": error,
                             "suggested_designs": protocol.get("suggested_designs", []),
                             "design_reason": protocol.get("design_reason", ""),
+                            "criteria_source": protocol.get("criteria_source"),
                             "help": "resume with True to approve, {'edits': {...}}, and/or "
                                     "{'accept_suggested_designs': True}"})
         try:
@@ -209,5 +225,6 @@ def protocol_approval(state: ReviewState) -> dict:
                        "event": "protocol approved", "approved_by": "human",
                        "edited_fields": sorted(edits), "edits": edits, "attempts": asked,
                        "study_designs": approved.study_designs,
+                       "criteria_source": approved.criteria_source,
                        "design_suggestion": suggestion_status(approved, accepted=accepted)}],
     }

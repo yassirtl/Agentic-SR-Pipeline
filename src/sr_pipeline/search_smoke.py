@@ -4,6 +4,11 @@
     .venv/bin/python -m sr_pipeline.search_smoke "..." --max-records 50 --refresh
     .venv/bin/python -m sr_pipeline.search_smoke "..." --check-word depress
     .venv/bin/python -m sr_pipeline.search_smoke "..." --accept-suggested-designs
+    .venv/bin/python -m sr_pipeline.search_smoke --topic T3       # evaluation topic
+
+``--topic T1|T2|T3`` (evaluation/topics.yaml): the question, designs, years,
+languages and criteria of the gold review replace the Planner's (see
+``evaluation.topics``); the question argument may then be left out.
 
 Two to four LLM calls (planner + search strategy with up to 2 refinements,
 < $0.01) and a few free database requests (hit counts per attempt, then the
@@ -29,6 +34,7 @@ from .agents.planner import apply_answer, make_planner, suggestion_status
 from .agents.search_strategy import make_search_strategy
 from .audit import AuditWriter, new_run_id
 from .config import load_config
+from .evaluation.topics import load_topic
 from .protocol import load_template
 from .sources import search_all
 
@@ -42,7 +48,10 @@ def mention_count(records, words: list[str]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("question")
+    ap.add_argument("question", nargs="?", help="research question (default: the topic's)")
+    ap.add_argument("--topic", default=None,
+                    help="evaluation topic of evaluation/topics.yaml (T1, T2, T3): seeds the "
+                         "protocol with the gold review's question, scope and criteria")
     ap.add_argument("--max-records", type=int, default=None, help="per database (default: config)")
     ap.add_argument("--refresh", action="store_true", help="re-query databases, ignore HTTP cache")
     ap.add_argument("--check-word", action="append", default=[],
@@ -51,6 +60,12 @@ def main(argv: list[str] | None = None) -> int:
                     help="restrict the search to the Planner's suggested designs, as a human "
                          "accepting the suggestion at approval")
     args = ap.parse_args(argv)
+    topic = load_topic(args.topic) if args.topic else None
+    if topic is not None and args.question and args.question != topic["question"]:
+        ap.error(f"--topic {args.topic} sets the question: {topic['question']!r}")
+    if topic is None and not args.question:
+        ap.error("give a question or --topic")
+    question = topic["question"] if topic is not None else args.question
 
     cfg = load_config()  # also loads .env
     if not os.environ.get("OPENAI_API_KEY"):
@@ -63,12 +78,12 @@ def main(argv: list[str] | None = None) -> int:
     t0 = time.monotonic()
 
     http = cfg.make_http(refresh=args.refresh)
-    state: dict = {"question": args.question, "completed_stages": [], "audit_log": []}
+    state: dict = {"question": question, "completed_stages": [], "audit_log": []}
     def merge(update: dict) -> None:  # same merge rule as the graph's reducers
         for k, v in update.items():
             state[k] = state.get(k, []) + v if k in ("completed_stages", "audit_log") else v
 
-    merge(make_planner(llm, load_template(cfg.protocol_template))(state))
+    merge(make_planner(llm, load_template(cfg.protocol_template), topic=topic)(state))
     if args.accept_suggested_designs:
         try:
             approved, _, _ = apply_answer(state["protocol"], {"accept_suggested_designs": True})
@@ -110,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
           f"{http.network_calls} HTTP requests)")
     protocol, strategy = state["protocol"], state["search_strategy"]
     print(f"Protocol: {protocol['title']}")
+    print(f"Criteria from: {protocol['criteria_source']}")
     print(f"Outcomes: {', '.join(protocol['pico']['outcomes'])} | "
           f"comparator: {protocol['pico']['comparator']}")
     print(f"Databases: {', '.join(protocol['databases'])} ({protocol['database_reason']})")

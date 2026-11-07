@@ -101,6 +101,10 @@ class Protocol(ProtocolDraft):
     database_reason: str = ""
     years: YearRange = Field(default_factory=lambda: YearRange())
     languages: list[str] = Field(default_factory=lambda: ["English"])
+    # Provenance, shown at approval: an evaluation run takes its criteria from the gold
+    # review (evaluation/topics.yaml), not from the Planner.
+    topic: str | None = None
+    criteria_source: str = "Planner (LLM draft)"
 
 
 class Template(BaseModel):

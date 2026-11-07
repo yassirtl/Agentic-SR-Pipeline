@@ -1,10 +1,13 @@
 # Evaluation topics (docs/PLAN.md §4b). Each run must use the same question, designs and
 # search window as the gold-standard review, so recall is measured on equal terms.
 # `years` goes into the protocol template (years.start / years.end_date).
-# Eligibility criteria: set the review's own criteria at protocol approval (edits), not
-# the Planner's draft. Seen in Part 6: the Planner wrote "aged 65 or older" for T3,
-# whose review used "over 60", and that criterion alone drove most exclusions.
-# T1 / T2 criteria: to copy from the papers before their runs (Part 10).
+# `--topic T1|T2|T3` (search_smoke, screen_smoke; CLI in Part 9) seeds the protocol with
+# question, study_designs, years, languages and inclusion/exclusion_criteria from here
+# (sr_pipeline.evaluation.topics), replacing the Planner's draft; criteria_source says so
+# at approval. Seen in Part 6: the Planner wrote "aged 65 or older" for T3, whose review
+# used "over 60", and that criterion alone drove most exclusions.
+# T1 / T2 criteria: to copy from the papers before their runs (Part 10); until then
+# their runs keep the Planner's criteria.
 
 T1:
   question: How accurate are smartwatches at detecting cardiac arrhythmias?

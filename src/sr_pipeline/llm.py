@@ -81,7 +81,9 @@ def _default_chat_factory(model: str):
     # Imported lazily: ChatOpenAI needs an API key at construction.
     from langchain_openai import ChatOpenAI
 
-    return ChatOpenAI(model=model, temperature=0)
+    # max_tokens: every structured answer is short; seen live, a screening call looped until
+    # the 16,384-token limit (5 minutes). A cap makes such a call fail fast (-> unresolved).
+    return ChatOpenAI(model=model, temperature=0, max_tokens=4096)
 
 
 class OpenAILLM(_Base):

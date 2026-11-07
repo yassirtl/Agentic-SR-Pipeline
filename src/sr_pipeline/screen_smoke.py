@@ -4,6 +4,13 @@
     .venv/bin/python -m sr_pipeline.screen_smoke runs/<search run> --limit 50 \\
         --gold evaluation/gold/T3_coverage.csv
     .venv/bin/python -m sr_pipeline.screen_smoke runs/<search run>          # every record
+    .venv/bin/python -m sr_pipeline.screen_smoke runs/20261107-160209-aec820 --topic T3 \\
+        --limit 50 --gold evaluation/gold/T3_coverage.csv
+
+``--topic T1|T2|T3`` re-seeds the search run's protocol with the gold review's
+question, designs, years, languages and criteria (evaluation/topics.yaml) before
+screening. Only the protocol changes: the records are those of the search run, so
+the topic's years/languages were NOT applied to retrieval (logged in the audit).
 
 Starts from a ``search_smoke`` run (protocol.json, search_strategy.json):
 1. retrieval + deduplication (database answers from the HTTP cache: free);
@@ -35,6 +42,7 @@ from .agents.screening import make_conflict_review, make_ft_screening, make_ta_s
 from .audit import AuditWriter, new_run_id
 from .config import load_config
 from .evaluation.gold import load_gold, match_gold
+from .evaluation.topics import load_topic, seed_protocol
 from .state import latest
 
 APPEND = {"ta_decisions", "ft_decisions", "completed_stages", "audit_log", "records"}
@@ -58,6 +66,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--limit", type=int, default=None, help="screen only the first N records")
     ap.add_argument("--gold", type=Path, default=None, help="gold CSV (a *_coverage.csv is best)")
     ap.add_argument("--no-full-text", action="store_true", help="stop after title/abstract")
+    ap.add_argument("--topic", default=None,
+                    help="evaluation topic (T1, T2, T3): screen with the gold review's criteria")
     args = ap.parse_args(argv)
 
     cfg = load_config()
@@ -66,6 +76,14 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     protocol = json.loads((args.search_run / "protocol.json").read_text())
     strategy = json.loads((args.search_run / "search_strategy.json").read_text())
+    seeded = None
+    if args.topic:
+        search_scope = {"years": protocol.get("years"), "languages": protocol.get("languages")}
+        protocol, seeded = seed_protocol(protocol, load_topic(args.topic))
+        seeded |= {"node": "screen_smoke", "records_from": str(args.search_run),
+                   "retrieval_scope": search_scope,
+                   "note": "records come from the search run: the topic's years and "
+                           "languages were not applied to retrieval"}
 
     run_id = new_run_id()
     audit = AuditWriter(cfg.runs_dir, run_id)
@@ -78,7 +96,8 @@ def main(argv: list[str] | None = None) -> int:
     state = {"question": protocol.get("question", ""), "protocol": protocol,
              "search_strategy": strategy, "completed_stages": ["planner", "search_strategy"],
              "audit_log": [{"node": "screen_smoke", "event": "start",
-                            "search_run": str(args.search_run), "limit": args.limit}]}
+                            "search_run": str(args.search_run), "limit": args.limit}]
+                           + ([seeded] if seeded else [])}
     state = merge(state, make_retrieval(http, max_records=cfg.max_records,
                                         contact_email=cfg.contact_email)(state))
     if args.limit:  # development run: the screened sample is the whole input downstream
@@ -106,6 +125,7 @@ def main(argv: list[str] | None = None) -> int:
     _dump(out / "ta_decisions.jsonl", ta)
     _dump(out / "ft_decisions.jsonl", ft)
     pc = state["prisma_counts"]
+    (out / "protocol.json").write_text(json.dumps(protocol, indent=2))
     (out / "prisma_counts.json").write_text(json.dumps(pc, indent=2))
 
     gold_report = None
@@ -130,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     cost = sum(e.get("cost_usd") or 0 for e in state["audit_log"])
     print(f"Run {run_id}  (" + ", ".join(f"{k} {v:.0f} s" for k, v in times.items())
           + f"; API ${cost:.4f})")
+    print(f"Criteria from: {protocol.get('criteria_source', 'Planner (LLM draft)')}")
     t = pc["title_abstract"]
     print(f"\nTitle/abstract: {t['records_screened']} screened, {t['included']} included, "
           f"{t['records_excluded']} excluded  (no abstract: {t['no_abstract']})")

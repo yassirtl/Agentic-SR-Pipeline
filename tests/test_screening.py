@@ -42,9 +42,24 @@ PAPERS = [paper("p1", "AGREE_IN"), paper("p2", "AGREE_OUT"), paper("p3", "SPLIT_
 QUOTE = "Older adults aged 65 were randomized"
 
 
+CRITERIA = ["D", "I1", "I2", "E1"]  # deciding order of PROTOCOL's criteria
+
+
 def dec(decision, criterion="all", quote=QUOTE, reason="r", chunk_id=""):
-    return {"decision": decision, "criterion": criterion, "reason": reason, "quote": quote,
-            "chunk_id": chunk_id}
+    """Scripted answer in the per-criterion format (Part 6b). 'include': every D / I
+    criterion met, no exclusion applies. 'exclude' on C: C fails with ``quote``; with an
+    empty quote C is 'unclear' (a strict screener's missing information). 'unresolved':
+    adjudicator only."""
+    ok = lambda cid: "no" if cid.startswith("E") else "yes"
+    bad = lambda cid: "yes" if cid.startswith("E") else "no"
+    verdicts = []
+    for cid in CRITERIA:
+        if decision == "exclude" and cid == criterion:
+            v = {"criterion": cid, "met": bad(cid) if quote else "unclear", "quote": quote}
+        else:
+            v = {"criterion": cid, "met": ok(cid), "quote": QUOTE if ok(cid) == "yes" else ""}
+        verdicts.append({**v, "chunk_id": chunk_id})
+    return {"verdicts": verdicts, "reason": reason, "unresolved": decision == "unresolved"}
 
 
 def screener(style: str):
@@ -104,7 +119,7 @@ def test_quote_check_ignores_case_and_punctuation_but_not_invention():
 
 
 def test_criteria_are_numbered_with_design():
-    assert [c for c, _ in criteria(PROTOCOL)] == ["I1", "I2", "D", "E1"]
+    assert [c for c, _ in criteria(PROTOCOL)] == ["D", "I1", "I2", "E1"]
     assert "I1: Participants aged 60" in __import__(
         "sr_pipeline.agents.screening", fromlist=["x"]).protocol_block(PROTOCOL)
 
@@ -139,13 +154,17 @@ def test_two_exclusions_without_evidence_go_to_the_adjudicator():
                        "screener_b": [dec("exclude", "I1", quote="all participants were 70")],
                        "adjudicator": [dec("include", "all")]})
     item, _ = screen_record(llm, PROTOCOL, PAPERS[0], ta_evidence(PAPERS[0]), stage="ta", rnd=1)
-    assert "exclusion_without_quote" in item["flags"]
+    # B's "no" quotes words that are not in the abstract: downgraded to unclear, so B
+    # includes and the adjudicator decides.
+    assert "unverified_b_I1" in item["flags"] and item["b"]["decision"] == "include"
     assert (item["final"], item["resolved_by"]) == ("include", "adjudicator")
-    # One verified quote is enough for an agreed exclusion.
-    llm = ScriptedLLM({"screener_a": [dec("exclude", "E1", quote="")],
+    # One verified quote is enough for an agreed exclusion; the deciding criterion is the
+    # verified failure (E1), not A's missing information (I2).
+    llm = ScriptedLLM({"screener_a": [dec("exclude", "I2", quote="")],
                        "screener_b": [dec("exclude", "E1", quote="randomized to walking")]})
     item, _ = screen_record(llm, PROTOCOL, PAPERS[0], ta_evidence(PAPERS[0]), stage="ta", rnd=1)
-    assert (item["final"], item["resolved_by"]) == ("exclude", "agreement")
+    assert (item["final"], item["resolved_by"], item["criterion"]) == \
+        ("exclude", "agreement", "E1")
 
 
 def test_llm_error_leaves_record_unresolved_never_dropped():
