@@ -157,6 +157,22 @@ def test_cli_limit_screens_the_top_records_and_the_diagram_says_so(tmp_path):
     assert "Only the 3 best-ranked unique records were screened" in md
     # The 3 best-ranked are the three trials: the review still pools them.
     assert state["synthesis"]["outcomes"][0]["method"] == "meta-analysis"
+    # The screening table tells "not screened" from "exclude" (Part 10 recall).
+    rows = (cfg.runs_dir / run_id / "report" / "tables" / "screening.csv").read_text()
+    assert rows.count(",not screened,") == 2
+
+
+def test_conflict_resolution_keeps_the_limit_counts():
+    from sr_pipeline.agents.screening import make_conflict_review
+    d = {"paper_id": "p1", "title": "t", "round": 1, "final": "unresolved", "flags": [],
+         "a": None, "b": None, "adjudicator": None, "criterion": None,
+         "resolved_by": "adjudicator", "verdicts": {}}
+    limit = {"screen_limit": 100, "records_available": 2758, "not_screened": 2658}
+    state = {"unique_records": [{"paper_id": "p1"}], "ta_decisions": [d],
+             "completed_stages": ["ta_screening"],
+             "prisma_counts": {"title_abstract": {"records_screened": 1, **limit}}}
+    ta = make_conflict_review("ta", human=False)(state)["prisma_counts"]["title_abstract"]
+    assert ta["included"] == 1 and {k: ta[k] for k in limit} == limit
 
 
 def test_default_limit_comes_from_the_config(tmp_path):

@@ -117,8 +117,11 @@ def screening_rows(state: dict) -> list[dict]:
     rows = []
     for p in papers:
         t, f = ta.get(p["paper_id"]), ft.get(p["paper_id"])
+        # Part 9b: a record above the screening limit has no decision: "not screened", so
+        # recall analyses can tell it from an exclusion. rank = best database relevance rank.
         rows.append({"paper_id": p["paper_id"], "title": p.get("title"), "year": p.get("year"),
-                     "doi": p.get("doi"), "ta": t and t["final"],
+                     "doi": p.get("doi"), "rank": p.get("rank"),
+                     "ta": t["final"] if t else "not screened",
                      "ta_criterion": t and t.get("criterion"),
                      "ta_resolved_by": t and t.get("resolved_by"),
                      "ft": f and f["final"], "ft_criterion": f and f.get("criterion"),
