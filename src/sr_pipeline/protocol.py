@@ -8,6 +8,11 @@ Two parts:
   ``databases: auto`` (the default) the Planner picks the databases from the
   topic, with a one-line reason; OpenAlex is always kept (code, not prompt).
 The human approves (or edits) the merged protocol before any search runs.
+
+Study designs: ``study_designs`` restricts the search and comes only from the
+user or the question (see ``agents.planner.choose_designs``). The Planner may
+also write ``suggested_designs`` + ``design_reason``: a suggestion the human can
+accept at approval; it is never applied by itself (and never in ``--auto``).
 """
 
 from pathlib import Path
@@ -53,6 +58,13 @@ class ProtocolDraft(BaseModel):
         description="Eligible study designs ONLY if the question or the user restricts them "
                     "(e.g. 'randomized controlled trial'). Otherwise an empty list = any "
                     "design. Never add designs you think are suitable.")
+    suggested_designs: list[str] = Field(
+        default_factory=list,
+        description="A SUGGESTION shown to the human, never applied by itself: the designs "
+                    "that best answer this type of question (e.g. 'does X reduce Y?' -> "
+                    "'randomized controlled trial'). Empty if no design clearly fits.")
+    design_reason: str = Field(
+        "", description="One line: why these designs are suggested.")
     rationale: str = Field(description="Two or three sentences on how the question was framed.")
 
 

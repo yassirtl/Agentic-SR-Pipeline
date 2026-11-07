@@ -109,7 +109,7 @@ class OpenAlexSource(Source):
             page += 1
         records = records[:max_records]
         return SearchResult(source=self.name, query=query, total_hits=total, records=records,
-                            capped=total > len(records))
+                            capped=total > max_records)
 
 
 def parse_work(work: dict) -> Record | None:

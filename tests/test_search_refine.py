@@ -7,8 +7,8 @@ so the refine loop is tested without network or API key.
 import httpx
 import pytest
 
-from sr_pipeline.agents.search_strategy import (build_prompt, build_queries, choose_attempt,
-                                                make_search_strategy, overlap)
+from sr_pipeline.agents.search_strategy import (_describe_attempt, build_prompt, build_queries,
+                                                choose_attempt, make_search_strategy, overlap)
 from sr_pipeline.config import load_config
 from sr_pipeline.llm import ScriptedLLM
 from sr_pipeline.sources import Concept, HttpClient, count_all
@@ -150,9 +150,21 @@ def test_too_narrow_is_refined_to_broader_plan():
     assert out["search_strategy"]["chosen_attempt"] == 2
 
 
+def shrinking_pop(n):
+    """Population block with n keywords: each refinement narrows a little."""
+    return {**POP, "keywords": ["older adults", "elderly", "seniors"][:n]}
+
+
+def by_terms(base):
+    """Fake database: fewer OR-ed terms -> fewer hits (always some progress)."""
+    return FakeCounts(lambda q: base + base // 8 * q.count(" OR "))
+
+
 def test_stops_after_two_refinements():
-    out, llm, _ = run_stage([plan(POP, INT)] * 5)
+    out, llm, _ = run_stage([plan(shrinking_pop(n), INT) for n in (3, 2, 1, 1, 1)],
+                            fake=by_terms(100_000))
     s = out["search_strategy"]
+    assert not any(a.get("no_progress") for a in s["attempts"])
     assert len(llm.calls) == 3 and len(s["attempts"]) == 3   # first plan + 2 refinements
     assert s["attempts"][-1]["reason"].count("refinement limit reached") == 1
     assert s["chosen_attempt"] == 3                           # all equal: latest wins
@@ -223,14 +235,15 @@ def test_prompt_keeps_concepts_apart_and_terms_short():
     assert "1 to 3 words each" in prompt and "Never phrases describing a result" in prompt
 
 
-def test_repeated_plan_is_flagged_and_the_llm_is_told():
+def test_repeated_plan_is_flagged_and_stops_the_loop():
     out, llm, _ = run_stage([plan(POP, INT), plan(POP, INT), plan(POP, INT, OUT)])
-    first, second, third = out["search_strategy"]["attempts"]
-    assert first["same_as"] is None and second["same_as"] == 1 and third["same_as"] is None
-    assert len(llm.calls) == 3                       # no extra call for the repeat
-    refine = llm.calls[2][1]
-    assert "must differ from every previous attempt" in refine
-    assert "Attempt 2 (identical to attempt 1: you did not change it)" in refine
+    first, second = out["search_strategy"]["attempts"]   # Part 4d: same counts = no progress
+    assert first["same_as"] is None and second["same_as"] == 1
+    assert second["no_progress"] and "no progress" in second["reason"]
+    assert len(llm.calls) == 2                       # no third call for a repeated plan
+    assert "must differ from every previous attempt" in llm.calls[1][1]
+    assert "Attempt 2 (identical to attempt 1: you did not change it)" in \
+        _describe_attempt(second)
 
 
 def test_overlap_lists_terms_in_several_blocks():

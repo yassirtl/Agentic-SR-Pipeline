@@ -50,7 +50,9 @@ class SearchResult(BaseModel):
     records: list[Record]
     searched_at: str = Field(default_factory=lambda: datetime.now(timezone.utc)
                              .isoformat(timespec="seconds"))
-    capped: bool = Field(False, description="True if max_records stopped the download early.")
+    capped: bool = Field(False, description="True if max_records stopped the download early "
+                         "(hits above the ceiling). A few records a database counts but does "
+                         "not return are in not_retrieved, not capped.")
 
     @computed_field
     @property

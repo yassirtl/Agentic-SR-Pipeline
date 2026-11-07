@@ -78,7 +78,7 @@ class ArxivSource(Source):
                 break
         records = records[:max_records]
         return SearchResult(source=self.name, query=full, total_hits=total, records=records,
-                            capped=total > len(records))
+                            capped=total > max_records)
 
 
 def parse_feed(xml: str) -> tuple[int, list[Record]]:

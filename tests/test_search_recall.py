@@ -14,7 +14,8 @@ from sr_pipeline.protocol import Template
 from sr_pipeline.sources import SearchResult
 from sr_pipeline.sources.design_filters import design_block, match_design
 
-from test_search_refine import INT, OUT, POP, PROTOCOL, FakeCounts, plan, run_stage
+from test_search_refine import (INT, OUT, POP, PROTOCOL, FakeCounts, by_terms, plan, run_stage,
+                               shrinking_pop)
 
 RCT = ["randomized controlled trial"]
 
@@ -41,14 +42,17 @@ def test_hits_below_the_ceiling_are_ok_and_fully_downloaded():
 
 
 def test_still_above_the_ceiling_after_refinements_is_capped_and_reported():
-    out, llm, _ = run_stage([plan(POP, INT)] * 3, fake=FakeCounts(lambda q: 4000),
-                            max_records=3000)
+    # each refinement narrows a little but never gets under the ceiling
+    out, llm, _ = run_stage([plan(shrinking_pop(n), INT) for n in (3, 2, 1)],
+                            fake=by_terms(4000), max_records=3000)
     s = out["search_strategy"]
     assert len(llm.calls) == 3                         # first plan + 2 refinements
+    assert "refinement limit reached" in s["attempts"][-1]["reason"]
     assert "download capped at 3000 per database" in s["attempts"][-1]["reason"]
+    assert s["counts"] == {"openalex": 4000, "pubmed": 5000}
     assert s["capped"] == {"openalex": True, "pubmed": True}
-    assert s["not_retrieved"] == {"openalex": 1000, "pubmed": 1000}
-    assert out["audit_log"][0]["not_retrieved"] == {"openalex": 1000, "pubmed": 1000}
+    assert s["not_retrieved"] == {"openalex": 1000, "pubmed": 2000}
+    assert out["audit_log"][0]["not_retrieved"] == {"openalex": 1000, "pubmed": 2000}
     # the LLM was told what the ceiling means
     assert "between 20 and 3000" in llm.calls[1][1]
     assert "reported as not retrieved" in llm.calls[0][1]

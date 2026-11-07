@@ -96,7 +96,7 @@ class PubMedSource(Source):
         total = int(found.get("count", 0))
         # The full search string (with filters) is what PRISMA asks to report.
         return SearchResult(source=self.name, query=term, total_hits=total, records=records,
-                            capped=total > len(records))
+                            capped=total > max_records)
 
 
 def _text(el: ET.Element | None) -> str | None:

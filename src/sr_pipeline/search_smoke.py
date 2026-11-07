@@ -3,13 +3,17 @@
     .venv/bin/python -m sr_pipeline.search_smoke "Does exercise reduce depression in older adults?"
     .venv/bin/python -m sr_pipeline.search_smoke "..." --max-records 50 --refresh
     .venv/bin/python -m sr_pipeline.search_smoke "..." --check-word depress
+    .venv/bin/python -m sr_pipeline.search_smoke "..." --accept-suggested-designs
 
 Two to four LLM calls (planner + search strategy with up to 2 refinements,
 < $0.01) and a few free database requests (hit counts per attempt, then the
 records). Per database it reports hits, records downloaded and hits not
 retrieved (above ``max_records``). ``--check-word`` prints, per database, the
 share of downloaded records whose title or abstract contains one of the words:
-a rough precision measure to compare search strategies. The protocol is not paused for approval (like --auto). Writes to
+a rough precision measure to compare search strategies. The protocol is not
+paused for approval (like --auto), so the Planner's design suggestion is not
+applied unless ``--accept-suggested-designs`` is given (same rule as the
+approval shortcut ``{"accept_suggested_designs": true}``). Writes to
 runs/<run_id>/: protocol.json, search_strategy.json, search_results.json,
 records.jsonl, audit.jsonl. Re-running the same question is free and identical
 (LLM and HTTP caches) unless --refresh is given. The full CLI comes in Part 9.
@@ -21,7 +25,7 @@ import os
 import sys
 import time
 
-from .agents.planner import make_planner
+from .agents.planner import apply_answer, make_planner, suggestion_status
 from .agents.search_strategy import make_search_strategy
 from .audit import AuditWriter, new_run_id
 from .config import load_config
@@ -43,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--refresh", action="store_true", help="re-query databases, ignore HTTP cache")
     ap.add_argument("--check-word", action="append", default=[],
                     help="report the share of records mentioning this word (repeatable)")
+    ap.add_argument("--accept-suggested-designs", action="store_true",
+                    help="restrict the search to the Planner's suggested designs, as a human "
+                         "accepting the suggestion at approval")
     args = ap.parse_args(argv)
 
     cfg = load_config()  # also loads .env
@@ -57,14 +64,25 @@ def main(argv: list[str] | None = None) -> int:
 
     http = cfg.make_http(refresh=args.refresh)
     state: dict = {"question": args.question, "completed_stages": [], "audit_log": []}
-    for node in (make_planner(llm, load_template(cfg.protocol_template)),
-                 make_search_strategy(llm, http, max_records=max_records,
-                                      min_hits=cfg.min_hits,
-                                      max_refinements=cfg.max_refinements,
-                                      contact_email=cfg.contact_email)):
-        update = node(state)
-        for k, v in update.items():  # same merge rule as the graph's reducers
+    def merge(update: dict) -> None:  # same merge rule as the graph's reducers
+        for k, v in update.items():
             state[k] = state.get(k, []) + v if k in ("completed_stages", "audit_log") else v
+
+    merge(make_planner(llm, load_template(cfg.protocol_template))(state))
+    if args.accept_suggested_designs:
+        try:
+            approved, _, _ = apply_answer(state["protocol"], {"accept_suggested_designs": True})
+        except ValueError as exc:
+            print(f"Cannot accept the design suggestion: {exc}", file=sys.stderr)
+            return 1
+        state["protocol"] = approved.model_dump(mode="json")
+        state["audit_log"].append({"node": "search_smoke", "event": "design suggestion accepted",
+                                   "study_designs": approved.study_designs,
+                                   "design_suggestion": suggestion_status(approved,
+                                                                          accepted=True)})
+    merge(make_search_strategy(llm, http, max_records=max_records, min_hits=cfg.min_hits,
+                               max_refinements=cfg.max_refinements,
+                               contact_email=cfg.contact_email)(state))
 
     results, errors = search_all(state["search_strategy"], http, max_records=max_records,
                                  contact_email=cfg.contact_email)
@@ -95,6 +113,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Outcomes: {', '.join(protocol['pico']['outcomes'])} | "
           f"comparator: {protocol['pico']['comparator']}")
     print(f"Databases: {', '.join(protocol['databases'])} ({protocol['database_reason']})")
+    suggested = protocol.get("suggested_designs") or []
+    applied = args.accept_suggested_designs and suggested
+    print(f"Suggested designs: {', '.join(suggested) or 'none'}"
+          + (f" ({protocol.get('design_reason')})" if suggested else "")
+          + (" -> accepted" if applied else " -> not applied" if suggested else ""))
     designs = strategy.get("design_filter") or []
     print("Study designs: " + (", ".join(f"{d['design']} [{d['filter']}]" for d in designs)
                                or "any (no design block)"))
@@ -107,6 +130,14 @@ def main(argv: list[str] | None = None) -> int:
         notes = (f" | same as attempt {a['same_as']}" if a.get("same_as") else "") + \
             (f" | terms in several blocks: {', '.join(a['overlap'])}" if a.get("overlap") else "")
         print(f"  {a['attempt']}. {blocks}: {counts or '-'}{mark}\n     {a['reason']}{notes}")
+        if a.get("removed_terms") or a.get("changed_terms"):
+            print("     LLM removed: " + (", ".join(t["term"] for t in a["removed_terms"]) or "-")
+                  + " | changed: " + (", ".join(f"{t['old']} -> {t['new']}"
+                                                for t in a["changed_terms"]) or "-"))
+        if "term_diff" in a:
+            d = a["term_diff"]
+            print(f"     really removed: {', '.join(d['removed']) or '-'} | "
+                  f"really added: {', '.join(d['added']) or '-'}")
     for db, query in state["search_strategy"]["queries"].items():
         print(f"\n[{db}] {query}")
         if db in results:

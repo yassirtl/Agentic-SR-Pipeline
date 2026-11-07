@@ -8,7 +8,10 @@ Two graph nodes, on purpose:
   Study designs restrict the search (a design filter is AND-ed to it), so they
   come only from the user (template hint, used as is) or from the question
   itself; designs the LLM adds on its own are dropped by code
-  (``choose_designs``) and logged.
+  (``choose_designs``) and logged. The Planner also writes a design
+  *suggestion* (``suggested_designs`` + ``design_reason``, e.g. RCTs for an
+  effect question): shown at approval, applied only if the human accepts it,
+  never in ``--auto``.
 - ``protocol_approval`` (not a stage, fixed edge after planner): pauses the run
   with LangGraph ``interrupt`` so a human can approve or edit the protocol.
 
@@ -17,8 +20,12 @@ top*. Keeping the LLM call out of the approval node means resuming never calls
 the LLM again.
 
 Resume value (``Command(resume=...)``):
-  ``True``                 approve as is
-  ``{"edits": {...}}``     apply edits (nested dicts merged, lists replaced)
+  ``True``                                approve as is
+  ``{"edits": {...}}``                    apply edits (nested dicts merged, lists replaced)
+  ``{"accept_suggested_designs": True}``  restrict the search to the Planner's
+                                          suggested designs (may be combined with
+                                          "edits"; an explicit ``study_designs``
+                                          edit wins)
 (``None`` and ``{}`` are not usable: LangGraph treats them as "no resume value".)
 Invalid answers or edits do not crash the run: the node asks again with the error.
 """
@@ -94,6 +101,11 @@ def build_prompt(question: str, template: Template) -> str:
         "- Study designs: only if the question or the user below restricts them; otherwise "
         "an empty list (any design). Do not add designs you think are suitable, and do not "
         "restrict designs through the criteria either.\n"
+        "- Separately, suggest designs (suggested_designs + design_reason): the designs that "
+        "best answer this type of question (e.g. an effect question 'does X reduce Y?' -> "
+        "randomized controlled trial). This is only a suggestion shown to the human, who "
+        "decides; it does not change study_designs. Leave it empty if no design clearly "
+        "fits.\n"
         "- Criteria must be short and testable from a title, abstract or full text.\n"
         "- One idea per criterion; do not repeat the scope (databases, years, languages).\n"
         "- Keep every element the user fixed below; refine, do not contradict.\n"
@@ -130,10 +142,46 @@ def make_planner(llm: LLM, template: Template):
                            "event": "protocol drafted", "databases": databases,
                            "database_reason": reason, "study_designs": designs,
                            "study_designs_source": design_source,
-                           "study_designs_dropped": dropped, **usage.as_dict()}],
+                           "study_designs_dropped": dropped,
+                           "suggested_designs": protocol.suggested_designs,
+                           "design_reason": protocol.design_reason,
+                           "design_suggestion": suggestion_status(protocol, accepted=False),
+                           **usage.as_dict()}],
         }
 
     return planner
+
+
+def suggestion_status(protocol: Protocol | dict, *, accepted: bool) -> str:
+    """Audit label for the design suggestion."""
+    get = protocol.get if isinstance(protocol, dict) else lambda k: getattr(protocol, k)
+    if not get("suggested_designs"):
+        return "none suggested"
+    return "accepted by human" if accepted else "suggested, not applied"
+
+
+ANSWER_KEYS = {"edits", "accept_suggested_designs"}
+
+
+def apply_answer(protocol: dict, answer) -> tuple[Protocol, dict, bool]:
+    """Approved protocol, applied edits and whether the design suggestion was accepted.
+    Raises ValueError for an answer that cannot be used (the node asks again)."""
+    if answer is True:
+        return Protocol.model_validate(protocol), {}, False
+    if not (isinstance(answer, dict) and answer and set(answer) <= ANSWER_KEYS
+            and isinstance(answer.get("edits", {}), dict)
+            and isinstance(answer.get("accept_suggested_designs", False), bool)):
+        raise ValueError(f"unrecognised answer: {answer!r}")
+    edits = dict(answer.get("edits", {}))
+    accepted = answer.get("accept_suggested_designs", False)
+    if accepted:
+        if not protocol.get("suggested_designs"):
+            raise ValueError("accept_suggested_designs: the Planner suggested no design")
+        edits.setdefault("study_designs", list(protocol["suggested_designs"]))
+    try:
+        return Protocol.model_validate(deep_merge(protocol, edits)), edits, accepted
+    except ValidationError as exc:
+        raise ValueError(f"invalid edits {edits!r}: {exc.errors(include_url=False)}") from exc
 
 
 def protocol_approval(state: ReviewState) -> dict:
@@ -144,19 +192,14 @@ def protocol_approval(state: ReviewState) -> dict:
     while True:
         asked += 1
         answer = interrupt({"kind": "protocol_approval", "protocol": protocol, "error": error,
-                            "help": "resume with True to approve, or {'edits': {...}}"})
-        if answer is True:
-            edits = {}
-        elif isinstance(answer, dict) and set(answer) <= {"edits"} \
-                and isinstance(answer.get("edits"), dict):
-            edits = answer["edits"]
-        else:
-            error = f"unrecognised answer: {answer!r}"
-            continue
+                            "suggested_designs": protocol.get("suggested_designs", []),
+                            "design_reason": protocol.get("design_reason", ""),
+                            "help": "resume with True to approve, {'edits': {...}}, and/or "
+                                    "{'accept_suggested_designs': True}"})
         try:
-            approved = Protocol.model_validate(deep_merge(protocol, edits))
-        except ValidationError as exc:
-            error = f"invalid edits {edits!r}: {exc.errors(include_url=False)}"
+            approved, edits, accepted = apply_answer(protocol, answer)
+        except ValueError as exc:
+            error = str(exc)
             continue
         break
 
@@ -164,5 +207,7 @@ def protocol_approval(state: ReviewState) -> dict:
         "protocol": approved.model_dump(mode="json"),
         "audit_log": [{"node": "protocol_approval", "step": state.get("steps_taken", 0),
                        "event": "protocol approved", "approved_by": "human",
-                       "edited_fields": sorted(edits), "edits": edits, "attempts": asked}],
+                       "edited_fields": sorted(edits), "edits": edits, "attempts": asked,
+                       "study_designs": approved.study_designs,
+                       "design_suggestion": suggestion_status(approved, accepted=accepted)}],
     }

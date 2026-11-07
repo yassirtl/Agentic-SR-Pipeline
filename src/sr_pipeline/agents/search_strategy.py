@@ -30,8 +30,16 @@ hidden: ``capped`` and ``not_retrieved`` per database (PRISMA flow diagram). Eve
 the report (PRISMA-S: how the search was developed). The attempt used in the
 end is the one with the fewest databases out of range (ties: the latest), so a
 refinement that overshoots does not replace a better earlier plan. An attempt
-identical to an earlier one is marked ``same_as`` and the LLM is told so; it
-still counts toward the limit (no extra calls).
+identical to an earlier one is marked ``same_as`` and the LLM is told so.
+
+Narrowing that keeps recall (Part 4d). Told "too broad", gpt-4o-mini used to
+*add* synonyms. A refinement now returns ``RefinedPlan``: the plan plus
+``removed_terms`` / ``changed_terms`` with a reason each, and the prompt allows
+only three narrowing moves (drop generic terms, turn a short ambiguous word into
+a phrase, add a missing outcome block); dropping a specific synonym is not
+allowed. Code records what really changed (``term_diff``) and stops the loop
+early when the counts move by less than ``MIN_PROGRESS`` (5%) versus the
+previous attempt in every database (``no_progress``): another call would not help.
 """
 
 from collections.abc import Mapping
@@ -44,6 +52,7 @@ from ..sources.design_filters import design_block
 from ..state import ReviewState, stage_round
 
 OK, TOO_BROAD, TOO_NARROW, ERROR = "ok", "too broad", "too narrow", "error"
+MIN_PROGRESS = 0.05  # a refinement must move some database's count by at least 5%
 
 
 class SearchPlan(BaseModel):
@@ -54,6 +63,26 @@ class SearchPlan(BaseModel):
         description="Concept blocks AND-ed together: population and intervention, plus an "
                     "outcome block when the rules ask for it. No design block.")
     rationale: str = Field(description="Two or three sentences: which blocks and why.")
+
+
+class RemovedTerm(BaseModel):
+    term: str = Field(description="Keyword dropped from a block.")
+    reason: str = Field(description="One line: why it pulled in unrelated records.")
+
+
+class ChangedTerm(BaseModel):
+    old: str = Field(description="Keyword as it was, e.g. 'aged'.")
+    new: str = Field(description="What replaced it, e.g. 'aged 65'.")
+    reason: str = Field(description="One line: why.")
+
+
+class RefinedPlan(SearchPlan):
+    """What the LLM writes when it revises a plan after seeing the hit counts."""
+
+    removed_terms: list[RemovedTerm] = Field(
+        default_factory=list, description="Every keyword dropped since the previous attempt.")
+    changed_terms: list[ChangedTerm] = Field(
+        default_factory=list, description="Every keyword rewritten since the previous attempt.")
 
 
 # --- prompts ---------------------------------------------------------------------
@@ -132,12 +161,19 @@ def build_refine_prompt(protocol: dict, attempts: list[dict], *, max_records: in
         f"(target: between {min_hits} and {max_hits} hits per database):\n"
         + "\n".join(_describe_attempt(a) for a in attempts)
         + "\n\nWrite a revised plan. It must differ from every previous attempt.\n"
-        "- Too broad: add an outcome block if there is none, or drop generic synonyms that "
-        "pull in unrelated records. Never drop a synonym an eligible study is likely to "
-        "use only to get under the limit.\n"
-        "- Too narrow: drop the least essential block (never the design block), or add "
-        "synonyms.\n"
-        "- The blocks are shared by all databases. A specialised database may legitimately "
+        "If too broad, these are the ONLY allowed moves:\n"
+        "  (a) remove ambiguous or generic keywords that match unrelated records (e.g. "
+        "'training', 'fitness', 'sadness');\n"
+        "  (b) turn a short ambiguous keyword into a phrase (e.g. 'aged' -> 'aged 65', "
+        "'aged 60');\n"
+        "  (c) add an outcome block if there is none.\n"
+        "  Not allowed: adding keywords; removing a specific synonym that eligible studies "
+        "use (e.g. 'elderly', 'depressive symptoms'). MeSH headings are not keywords: keep "
+        "them (e.g. Aged is the correct heading for 65 and over).\n"
+        "If too narrow: add synonyms, or drop the least essential block.\n"
+        "List every keyword you removed in removed_terms and every keyword you rewrote in "
+        "changed_terms, with a one-line reason each.\n"
+        "The blocks are shared by all databases. A specialised database may legitimately "
         "have few hits on this topic: do not broaden the whole search only for it when the "
         "other databases are in range.\n"
     )
@@ -160,6 +196,24 @@ def overlap(concepts: list[dict]) -> list[str]:
     return sorted(k for k, v in seen.items() if v == -1)
 
 
+def term_diff(old: list[dict], new: list[dict]) -> dict[str, list[str]]:
+    """Keywords really removed / added between two attempts (code, not the LLM's claim)."""
+    words = lambda cs: {k.lower() for c in cs if c.get("role") != "design" for k in c["keywords"]}
+    before, after = words(old), words(new)
+    return {"removed": sorted(before - after), "added": sorted(after - before)}
+
+
+def no_progress(previous: dict, current: dict, threshold: float = MIN_PROGRESS) -> bool:
+    """True when no database's count moved by ``threshold`` or more (relative)."""
+    shared = [db for db in current["counts"] if db in previous["counts"]]
+    if not shared:
+        return False
+    def moved(db):
+        old, new = previous["counts"][db], current["counts"][db]
+        return abs(new - old) / old >= threshold if old else new != old
+    return not any(moved(db) for db in shared)
+
+
 def classify(counts: dict[str, int], errors: dict[str, str], *, max_hits: int,
              min_hits: int) -> dict[str, str]:
     status = {}
@@ -174,8 +228,10 @@ def out_of_range(attempt: dict) -> int:
 
 
 def choose_attempt(attempts: list[dict]) -> dict:
-    """Fewest databases out of range; ties go to the latest attempt."""
-    return min(reversed(attempts), key=out_of_range)
+    """Fewest databases out of range; ties go to the latest attempt, except an attempt
+    flagged ``no_progress``: it narrowed nothing, so it never beats an equal earlier one
+    (it may still have dropped useful terms)."""
+    return min(reversed(attempts), key=lambda a: (out_of_range(a), bool(a.get("no_progress"))))
 
 
 def sum_usage(usages: list[Usage]) -> dict:
@@ -219,7 +275,8 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
         design, design_mapping = design_block(protocol.get("study_designs", []))
 
         for number in range(1, max_refinements + 2):
-            plan, usage = llm.call_with_usage(SearchPlan, prompt, agent="search_strategy")
+            schema = SearchPlan if number == 1 else RefinedPlan
+            plan, usage = llm.call_with_usage(schema, prompt, agent="search_strategy")
             usages.append(usage)
             topic, dropped = topic_concepts(plan)
             final = topic + ([design] if design else [])
@@ -230,6 +287,12 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
                        "same_as": next((a["attempt"] for a in attempts
                                         if a["concepts"] == concepts), None),
                        "overlap": overlap(concepts), "llm_design_blocks_dropped": dropped}
+            if isinstance(plan, RefinedPlan):
+                attempt.update(
+                    removed_terms=[t.model_dump() for t in plan.removed_terms],
+                    changed_terms=[t.model_dump() for t in plan.changed_terms],
+                    term_diff=term_diff(attempts[-1]["concepts"], concepts),
+                    no_progress=False)
             attempts.append(attempt)
             if http is None:
                 attempt["reason"] = "hit counts not checked (no HTTP client)"
@@ -244,6 +307,13 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
                 attempt["reason"] = "all databases within range"
                 break
             summary = ", ".join(f"{db} {s} ({counts[db]} hits)" for db, s in bad.items())
+            if number > 1 and no_progress(attempts[-2], attempt):
+                attempt["no_progress"] = True
+                attempt["reason"] = (f"{summary}; no progress (counts changed by less than "
+                                     f"{MIN_PROGRESS:.0%}), refinement stopped")
+                if TOO_BROAD in bad.values():
+                    attempt["reason"] += f" (download capped at {max_records} per database)"
+                break
             if number > max_refinements:
                 attempt["reason"] = f"{summary}; refinement limit reached"
                 if TOO_BROAD in bad.values():
@@ -279,6 +349,11 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
                            "event": "search strategy built", "queries": chosen["queries"],
                            "attempts": len(attempts), "chosen_attempt": chosen["attempt"],
                            "counts_per_attempt": [a["counts"] for a in attempts],
+                           "removed_terms": [t["term"] for a in attempts
+                                             for t in a.get("removed_terms", [])],
+                           "changed_terms": [f"{t['old']} -> {t['new']}" for a in attempts
+                                             for t in a.get("changed_terms", [])],
+                           "stopped_no_progress": any(a.get("no_progress") for a in attempts),
                            "design_filter": design_mapping,
                            "not_retrieved": strategy["not_retrieved"],
                            **sum_usage(usages)}],
