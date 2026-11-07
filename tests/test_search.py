@@ -116,6 +116,9 @@ def test_openalex_fields_and_retry_on_recorded_429():
     r = result.records[0]
     assert r.source_id.startswith("W") and r.venue
     assert all(d is None or d.startswith("10.") for d in (x.doi for x in result.records))
+    # Same PMC id format as PubMed ("PMC1234"), so deduplication can compare them.
+    assert all(x.pmcid is None or x.pmcid.startswith("PMC") for x in result.records)
+    assert any(x.pmcid for x in result.records)
     # The recording contains a real 429 on page 2: retried once, then served.
     assert len(t.sleeps) >= 1
 

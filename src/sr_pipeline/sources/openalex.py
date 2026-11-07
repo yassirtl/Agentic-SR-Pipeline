@@ -47,6 +47,14 @@ def _strip(url: str | None, prefix: str) -> str | None:
     return url[len(prefix):] if url and url.startswith(prefix) else url
 
 
+def _pmcid(url: str | None) -> str | None:
+    """'https://www.ncbi.nlm.nih.gov/pmc/articles/4929037' -> 'PMC4929037' (PubMed's format)."""
+    if not url:
+        return None
+    tail = url.rstrip("/").rsplit("/", 1)[-1]
+    return tail if tail.upper().startswith("PMC") else f"PMC{tail}"
+
+
 class OpenAlexSource(Source):
     name = "openalex"
 
@@ -109,5 +117,5 @@ def parse_work(work: dict) -> Record | None:
         url=primary.get("landing_page_url") or (f"https://doi.org/{doi}" if doi else None),
         oa_pdf_url=best_oa.get("pdf_url"),
         pmid=_strip(ids.get("pmid"), "https://pubmed.ncbi.nlm.nih.gov/"),
-        pmcid=_strip(ids.get("pmcid"), "https://www.ncbi.nlm.nih.gov/pmc/articles/"),
+        pmcid=_pmcid(ids.get("pmcid")),
     )
