@@ -28,6 +28,9 @@ DRAFT = {
     "exclusion_criteria": ["Not a primary study", "Animal study"],
     "study_designs": ["randomized controlled trial"],
     "rationale": "The question names population, intervention and outcome.",
+    # Only read when the template says databases: auto (the default).
+    "databases": ["pubmed", "openalex"],
+    "database_reason": "Health question: PubMed for clinical trials, OpenAlex for coverage.",
 }
 
 
@@ -73,7 +76,7 @@ def test_config_precedence_defaults_yaml_env(tmp_path):
 
 def test_template_is_valid():
     t = load_template(TEMPLATE)
-    assert t.databases == ["openalex", "pubmed", "arxiv"]
+    assert t.databases == "auto"
     assert t.years.start == 2015
 
 
@@ -187,3 +190,44 @@ def test_unrecognised_answer_asks_again(answer):
 
     final = graph.invoke(Command(resume={"edits": {}}), cfg)  # empty edits = approve
     assert final["completed_stages"] == list(STAGES)
+
+
+# --- Part 4b: planner stays on the question, database choice ----------------------
+
+def test_prompt_keeps_outcomes_from_the_question_and_asks_for_a_control():
+    prompt = build_prompt(QUESTION, Template())
+    assert "Outcomes: only the ones the question names, primary outcome first" in prompt
+    assert "Do NOT add secondary outcomes unless the user listed them" in prompt
+    assert "never as a direction or result" in prompt
+    assert "do not add a condition, severity or setting" in prompt
+    assert "write a control" in prompt and "'none' only" in prompt
+
+
+def test_auto_databases_chosen_by_planner_and_openalex_always_kept():
+    llm = scripted({**DRAFT, "databases": ["pubmed"]})          # LLM forgot openalex
+    update = make_planner(llm, Template())({"question": QUESTION, "completed_stages": []})
+    p = update["protocol"]
+    assert p["databases"] == ["openalex", "pubmed"]             # added back by code
+    assert p["database_reason"] == DRAFT["database_reason"]
+    assert update["audit_log"][0]["databases"] == ["openalex", "pubmed"]
+    assert "Choose the databases" in llm.calls[0][1]
+
+
+def test_explicit_database_list_wins_over_planner():
+    llm = scripted(DRAFT)  # the draft's own choice is ignored
+    update = make_planner(llm, Template(databases=["arxiv"]))(
+        {"question": QUESTION, "completed_stages": []})
+    assert update["protocol"]["databases"] == ["arxiv"]
+    assert update["protocol"]["database_reason"] == "set by the user in the protocol template"
+    prompt = llm.calls[0][1]
+    assert "Choose the databases" not in prompt and "databases arxiv" in prompt
+
+
+def test_human_can_edit_the_database_choice_at_approval():
+    graph = graph_with_planner(scripted(DRAFT), approve_protocol=True)
+    cfg = run_config("db-edit")
+    first = graph.invoke({"question": QUESTION}, cfg)
+    shown = first["__interrupt__"][0].value["protocol"]
+    assert shown["databases"] == ["pubmed", "openalex"] and shown["database_reason"]
+    final = graph.invoke(Command(resume={"edits": {"databases": ["openalex"]}}), cfg)
+    assert final["protocol"]["databases"] == ["openalex"]

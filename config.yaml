@@ -12,6 +12,12 @@ models:              # per-agent model; agents not listed use default_model
 max_records: 500     # per database
 max_steps: 40        # coordinator step budget
 
+# Search refinement (search_strategy stage): hit counts are checked before any
+# download; the LLM narrows / broadens the query at most max_refinements times.
+broad_factor: 5      # too broad if hits > broad_factor x max_records (5 x 500 = 2500)
+min_hits: 20         # too narrow if hits < min_hits
+max_refinements: 2
+
 # Optional: an e-mail sent to OpenAlex (polite pool) and NCBI so they can contact
 # you instead of blocking you. Better set it in .env as SR_CONTACT_EMAIL.
 contact_email: null

@@ -3,7 +3,8 @@
 Two graph nodes, on purpose:
 
 - ``planner`` (a stage): one LLM call that drafts the scientific part of the
-  protocol, merged with the scope from the template.
+  protocol, merged with the scope from the template. With ``databases: auto``
+  the same call also picks the databases (see ``protocol.choose_databases``).
 - ``protocol_approval`` (not a stage, fixed edge after planner): pauses the run
   with LangGraph ``interrupt`` so a human can approve or edit the protocol.
 
@@ -22,7 +23,8 @@ from pydantic import ValidationError
 from langgraph.types import interrupt
 
 from ..llm import LLM
-from ..protocol import SCOPE_FIELDS, Protocol, ProtocolDraft, Template, deep_merge
+from ..protocol import (Protocol, ProtocolDraft, ProtocolDraftAuto, Template,
+                        choose_databases, deep_merge)
 from ..state import ReviewState, stage_round
 
 
@@ -40,20 +42,38 @@ def _hints(template: Template) -> str:
     return "\n".join(lines)
 
 
+DATABASE_RULE = (
+    "- Choose the databases: openalex always (all disciplines); add pubmed for health, "
+    "medicine, psychology or life-science questions; add arxiv for computer science, "
+    "physics, mathematics, statistics or other quantitative fields. Give a one-line reason.\n"
+)
+
+
 def build_prompt(question: str, template: Template) -> str:
     years = template.years
     span = f"{years.start or 'any'} to {years.end or 'now'}"
+    auto = template.databases == "auto"
+    databases = "chosen by you (see rules)" if auto else ", ".join(template.databases)
     hints = _hints(template)
     return (
         "You are a methodologist writing the protocol of a PRISMA 2020 systematic review.\n"
         "Frame the research question with PICO and write eligibility criteria.\n"
         "Rules:\n"
+        "- Stay on the question. Population: exactly who the question names; do not add a "
+        "condition, severity or setting the question does not state.\n"
+        "- Outcomes: only the ones the question names, primary outcome first. Do NOT add "
+        "secondary outcomes unless the user listed them below.\n"
+        "- Name each outcome as the measured construct (e.g. 'depressive symptoms'), never as "
+        "a direction or result ('reduction in ...', 'improvement in ...').\n"
+        "- Comparator: if the question asks about an effect (does X reduce / improve / cause "
+        "Y?), write a control, e.g. 'no intervention, usual care or any control'; write "
+        "'none' only for questions without any comparison (e.g. prevalence).\n"
         "- Criteria must be short and testable from a title, abstract or full text.\n"
         "- One idea per criterion; do not repeat the scope (databases, years, languages).\n"
         "- Keep every element the user fixed below; refine, do not contradict.\n"
-        "- If the question does not name a comparator, write 'any' or 'none'.\n\n"
-        f"Research question: {question}\n"
-        f"Scope (fixed): databases {', '.join(template.databases)}; years {span}; "
+        + (DATABASE_RULE if auto else "")
+        + f"\nResearch question: {question}\n"
+        f"Scope: databases {databases}; years {span}; "
         f"languages {', '.join(template.languages)}.\n"
         + (f"{hints}\n" if hints else "")
     )
@@ -62,18 +82,23 @@ def build_prompt(question: str, template: Template) -> str:
 def make_planner(llm: LLM, template: Template):
     def planner(state: ReviewState) -> dict:
         question = state["question"]
-        draft, usage = llm.call_with_usage(ProtocolDraft, build_prompt(question, template),
+        schema = ProtocolDraftAuto if template.databases == "auto" else ProtocolDraft
+        draft, usage = llm.call_with_usage(schema, build_prompt(question, template),
                                            agent="planner")
-        # Scope comes from the template, never from the LLM.
-        protocol = Protocol(question=question, **draft.model_dump(),
-                            **template.model_dump(include=set(SCOPE_FIELDS)))
+        databases, reason = choose_databases(template, draft)
+        # Years and languages come from the template, never from the LLM.
+        protocol = Protocol(question=question,
+                            **draft.model_dump(include=set(ProtocolDraft.model_fields)),
+                            databases=databases, database_reason=reason,
+                            years=template.years, languages=template.languages)
         completed = state.get("completed_stages", [])
         return {
             "protocol": protocol.model_dump(mode="json"),
             "completed_stages": ["planner"],
             "audit_log": [{"node": "planner", "step": state.get("steps_taken", 0),
                            "round": stage_round("planner", completed),
-                           "event": "protocol drafted", **usage.as_dict()}],
+                           "event": "protocol drafted", "databases": databases,
+                           "database_reason": reason, **usage.as_dict()}],
         }
 
     return planner

@@ -7,6 +7,7 @@ Connectors translate those answers into ``Record`` so the rest of the pipeline
 
 import re
 from datetime import datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -78,6 +79,8 @@ class Concept(BaseModel):
     """
 
     name: str = Field(description="Short label, e.g. 'population: older adults'.")
+    role: Literal["population", "intervention", "outcome", "design", "other"] = Field(
+        "other", description="Which part of the question this block searches.")
     keywords: list[str] = Field(
         min_length=1,
         description="Free-text synonyms and spelling variants searched in title/abstract. "
@@ -85,6 +88,10 @@ class Concept(BaseModel):
     mesh_terms: list[str] = Field(
         default_factory=list,
         description="Matching MeSH headings (PubMed only), exact official spelling.")
+    publication_types: list[str] = Field(
+        default_factory=list,
+        description="PubMed publication types (tag [pt]), design block only, e.g. "
+                    "'randomized controlled trial'. Leave empty otherwise.")
 
 
 def clean_term(term: str) -> str:
@@ -112,7 +119,12 @@ def join_blocks(blocks: list[str]) -> str:
 
 
 class Source:
-    """Base class of a connector. Subclasses set ``name`` and implement both methods."""
+    """Base class of a connector. Subclasses set ``name`` and implement the three methods.
+
+    ``count`` returns the number of hits only (one small request, no records), with
+    the same filters as ``search``: the search strategy uses it to check that a
+    query is neither far too broad nor far too narrow before anything is downloaded.
+    """
 
     name: str = ""
 
@@ -121,4 +133,8 @@ class Source:
 
     def search(self, query: str, *, years: dict | None = None, languages: list[str] | None = None,
                max_records: int = 500) -> SearchResult:
+        raise NotImplementedError
+
+    def count(self, query: str, *, years: dict | None = None,
+              languages: list[str] | None = None) -> int:
         raise NotImplementedError

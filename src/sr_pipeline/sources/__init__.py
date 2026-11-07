@@ -1,11 +1,14 @@
 """Database connectors. All return ``Record`` objects (see base.py).
 
 ``search_all`` runs the search strategy on every database of the protocol; the
-retrieval stage (Part 5) uses it. One database failing does not stop the
+retrieval stage (Part 5) uses it. ``count_all`` only asks each database for its
+number of hits (the search strategy uses it to refine too broad / too narrow
+queries before anything is downloaded). One database failing does not stop the
 others: its error is returned so it can be logged and reported.
 """
 
 import os
+import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 
 from .arxiv import ArxivSource
@@ -46,10 +49,28 @@ def search_all(strategy: dict, http: HttpClient, *, max_records: int,
             results[name] = source.search(query, years=filters.get("years"),
                                           languages=filters.get("languages"),
                                           max_records=max_records)
-        except (HttpError, ValueError, KeyError) as exc:
+        except (HttpError, ValueError, KeyError, ET.ParseError) as exc:
             errors[name] = f"{type(exc).__name__}: {exc}"
     return results, errors
 
 
+def count_all(queries: dict[str, str], filters: dict, http: HttpClient, *,
+              contact_email: str | None = None, env: Mapping[str, str] | None = None
+              ) -> tuple[dict[str, int], dict[str, str]]:
+    """Hit count per database for ``queries`` with the same filters as ``search_all``.
+
+    Returns ``(counts, errors)``; a failing database is reported, never raised.
+    """
+    counts, errors = {}, {}
+    for name, query in queries.items():
+        source = make_source(name, http, contact_email=contact_email, env=env)
+        try:
+            counts[name] = source.count(query, years=filters.get("years"),
+                                        languages=filters.get("languages"))
+        except (HttpError, ValueError, KeyError, ET.ParseError) as exc:
+            errors[name] = f"{type(exc).__name__}: {exc}"
+    return counts, errors
+
+
 __all__ = ["SOURCES", "Concept", "HttpClient", "HttpError", "Record", "SearchResult",
-           "Source", "make_source", "search_all"]
+           "Source", "count_all", "make_source", "search_all"]

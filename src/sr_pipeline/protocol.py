@@ -4,7 +4,9 @@ Two parts:
 - the *scientific* part (title, PICO, criteria, study designs), drafted by the
   Planner LLM from the question;
 - the *scope* part (databases, years, languages), set by the user in the
-  protocol template and never invented by the LLM.
+  protocol template and never invented by the LLM. One exception: with
+  ``databases: auto`` (the default) the Planner picks the databases from the
+  topic, with a one-line reason; OpenAlex is always kept (code, not prompt).
 The human approves (or edits) the merged protocol before any search runs.
 """
 
@@ -15,14 +17,16 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 Database = Literal["openalex", "pubmed", "arxiv"]
-SCOPE_FIELDS = ("databases", "years", "languages")
 
 
 class PICO(BaseModel):
     population: str = Field(description="Who is studied (patients, participants, systems).")
     intervention: str = Field(description="The intervention, exposure or method of interest.")
-    comparator: str = Field(description="What it is compared with; 'any' or 'none' if not applicable.")
-    outcomes: list[str] = Field(description="Outcomes that matter for the question, most important first.")
+    comparator: str = Field(description="What it is compared with. For a question about an "
+                            "effect, a control (e.g. 'no intervention, usual care or any "
+                            "control'), not 'none'.")
+    outcomes: list[str] = Field(description="Outcomes named by the question, primary outcome "
+                                "first; others only if the user asked for them.")
 
 
 class YearRange(BaseModel):
@@ -50,11 +54,27 @@ class ProtocolDraft(BaseModel):
     rationale: str = Field(description="Two or three sentences on how the question was framed.")
 
 
+class DatabaseChoice(BaseModel):
+    """Extra fields the Planner writes when the template says ``databases: auto``."""
+
+    databases: list[Database] = Field(
+        min_length=1,
+        description="Databases to search: openalex (all fields, always), pubmed (health, "
+                    "medicine, life sciences), arxiv (computer science, physics, maths, "
+                    "statistics, quantitative fields).")
+    database_reason: str = Field(description="One line: why these databases.")
+
+
+class ProtocolDraftAuto(ProtocolDraft, DatabaseChoice):
+    """Planner output when the databases are chosen by the LLM."""
+
+
 class Protocol(ProtocolDraft):
     """Full protocol = question + LLM draft + scope from the template."""
 
     question: str
     databases: list[Database] = Field(min_length=1)
+    database_reason: str = ""
     years: YearRange = Field(default_factory=lambda: YearRange())
     languages: list[str] = Field(default_factory=lambda: ["English"])
 
@@ -63,14 +83,24 @@ class Template(BaseModel):
     """Contents of protocols/template.yaml. Scope fields are applied as is;
     the other fields are hints for the Planner (may be left empty)."""
 
-    databases: list[Database] = Field(default_factory=lambda: ["openalex", "pubmed", "arxiv"],
-                                      min_length=1)
+    databases: list[Database] | Literal["auto"] = Field(
+        "auto", description="'auto' = the Planner chooses; a list = fixed by the user.")
     years: YearRange = Field(default_factory=lambda: YearRange())
     languages: list[str] = Field(default_factory=lambda: ["English"])
     study_designs: list[str] = Field(default_factory=list)
     inclusion_criteria: list[str] = Field(default_factory=list)
     exclusion_criteria: list[str] = Field(default_factory=list)
     pico: dict[str, str | list[str]] = Field(default_factory=dict)
+
+
+def choose_databases(template: Template, draft: ProtocolDraft) -> tuple[list[str], str]:
+    """Final database list + reason. An explicit template list always wins."""
+    if template.databases != "auto":
+        return list(template.databases), "set by the user in the protocol template"
+    chosen = list(dict.fromkeys(draft.databases))  # dedupe, keep order
+    if "openalex" not in chosen:                    # multidisciplinary: always searched
+        chosen.insert(0, "openalex")
+    return chosen, draft.database_reason
 
 
 def load_template(path: str | Path) -> Template:

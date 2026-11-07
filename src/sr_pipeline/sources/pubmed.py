@@ -10,7 +10,9 @@ MeSH = Medical Subject Headings, the controlled vocabulary NCBI indexers assign
 to every article: it finds papers that use other words for the same concept.
 Indexing takes weeks to months, so recent papers only match on [tiab]: that is
 why both are OR-ed together. A misspelled MeSH heading matches nothing but does
-no harm, since the [tiab] synonyms still match.
+no harm, since the [tiab] synonyms still match. A design block may also use
+publication types (``[pt]``, e.g. "randomized controlled trial"[pt]), the
+indexers' label for the study design.
 
 Rate limit: 3 requests/s without key, 10/s with NCBI_API_KEY.
 Open access: a PMC id means the full text is free in PubMed Central.
@@ -46,6 +48,7 @@ class PubMedSource(Source):
         for c in concepts:
             terms = [_tag(t, "tiab") for t in unique_terms(c.keywords)]
             terms += [_tag(t, "mh") for t in unique_terms(c.mesh_terms)]
+            terms += [_tag(t, "pt") for t in unique_terms(c.publication_types)]
             blocks.append(" OR ".join(terms))
         return join_blocks(blocks)
 
@@ -53,15 +56,30 @@ class PubMedSource(Source):
         return {"db": "pubmed", "tool": TOOL, "email": self.contact_email,
                 "api_key": self.api_key, **extra}
 
-    def search(self, query, *, years=None, languages=None, max_records=500) -> SearchResult:
-        term = query
-        if languages:
-            term = f"({query}) AND (" + " OR ".join(f"{l.lower()}[la]" for l in languages) + ")"
+    @staticmethod
+    def _term(query, languages) -> str:
+        if not languages:
+            return query
+        return f"({query}) AND (" + " OR ".join(f"{l.lower()}[la]" for l in languages) + ")"
+
+    @staticmethod
+    def _dates(years) -> dict:
         start, end = (years or {}).get("start"), (years or {}).get("end")
-        dates = {}
-        if start or end:  # PubMed needs both bounds
-            dates = {"datetype": "pdat", "mindate": str(start or 1800),
-                     "maxdate": str(end or date.today().year)}
+        if not (start or end):
+            return {}
+        # PubMed needs both bounds
+        return {"datetype": "pdat", "mindate": str(start or 1800),
+                "maxdate": str(end or date.today().year)}
+
+    def count(self, query, *, years=None, languages=None) -> int:
+        found = self.http.get_json(f"{EUTILS}/esearch.fcgi", self._params(
+            term=self._term(query, languages), retmax=0, retmode="json",
+            **self._dates(years)))["esearchresult"]
+        return int(found.get("count", 0))
+
+    def search(self, query, *, years=None, languages=None, max_records=500) -> SearchResult:
+        term = self._term(query, languages)
+        dates = self._dates(years)
 
         found = self.http.get_json(f"{EUTILS}/esearch.fcgi", self._params(
             term=term, retmax=max_records, retmode="json", sort="relevance",

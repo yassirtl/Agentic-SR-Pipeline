@@ -2,25 +2,42 @@
 
 Division of labour:
 - the LLM does the part that needs domain knowledge: split the question into
-  2-3 *concepts* and list, for each, synonyms and spelling variants (plus MeSH
-  headings for PubMed);
+  concept blocks and list, for each, synonyms and spelling variants (plus MeSH
+  headings and publication types for PubMed);
 - code turns those concepts into each database's syntax (``Source.build_query``):
-  synonyms OR-ed inside a concept, concepts AND-ed together.
+  synonyms OR-ed inside a block, blocks AND-ed together.
 
-So the queries are always syntactically valid, the Boolean logic is identical
-in every database, and the exact strings are stored in the state for the report.
+Which blocks. The textbook advice "search population AND intervention only,
+leave outcomes to screening" assumes every hit is screened. Here at most
+``max_records`` records per database are downloaded (most relevant first): when
+P AND I matches 300,000 records, the relevant ones sit far beyond the cap and
+are never seen, so recall is lost, not gained. Hence:
+- an outcome block when the outcome is specific and defines the topic
+  (e.g. depression), or when P AND I is far too broad;
+- a design block (e.g. randomized trials) only if the protocol restricts designs.
 
-Why only 2-3 concepts: every extra AND removes papers. Outcomes and comparators
-are often not mentioned in titles/abstracts, so searching on them loses relevant
-studies; screening (not the search) is where eligibility is checked. A search
-for a systematic review aims at recall (find everything), not precision.
+Count and refine. Before anything is downloaded, each database is asked for its
+hit count only (one small, cached request). A database is *too broad* above
+``broad_factor x max_records`` hits and *too narrow* below ``min_hits``. If any
+database is out of range, the counts go back to the LLM, which writes a
+narrower or broader plan; at most ``max_refinements`` times. Every attempt
+(blocks, queries, counts, reason) is kept in ``search_strategy['attempts']`` for
+the report (PRISMA-S: how the search was developed). The attempt used in the
+end is the one with the fewest databases out of range (ties: the latest), so a
+refinement that overshoots does not replace a better earlier plan. An attempt
+identical to an earlier one is marked ``same_as`` and the LLM is told so; it
+still counts toward the limit (no extra calls).
 """
+
+from collections.abc import Mapping
 
 from pydantic import BaseModel, Field
 
-from ..llm import LLM
-from ..sources import SOURCES, Concept, HttpClient
+from ..llm import LLM, Usage
+from ..sources import SOURCES, Concept, HttpClient, count_all
 from ..state import ReviewState, stage_round
+
+OK, TOO_BROAD, TOO_NARROW, ERROR = "ok", "too broad", "too narrow", "error"
 
 
 class SearchPlan(BaseModel):
@@ -28,28 +45,16 @@ class SearchPlan(BaseModel):
 
     concepts: list[Concept] = Field(
         min_length=1, max_length=4,
-        description="Concept blocks AND-ed together; usually 2 (population, intervention), "
-                    "at most 3.")
-    rationale: str = Field(description="Two or three sentences: which concepts and why.")
+        description="Concept blocks AND-ed together: population and intervention, plus an "
+                    "outcome block and/or a design block when the rules ask for them.")
+    rationale: str = Field(description="Two or three sentences: which blocks and why.")
 
 
-def build_prompt(protocol: dict) -> str:
+# --- prompts ---------------------------------------------------------------------
+
+def _protocol_lines(protocol: dict) -> str:
     pico = protocol["pico"]
     return (
-        "You are an information specialist designing the literature search of a PRISMA 2020 "
-        "systematic review. The goal is high recall: find every eligible study; screening "
-        "removes irrelevant ones later.\n"
-        "Split the question into concept blocks. Synonyms inside a block are joined with OR, "
-        "blocks are joined with AND.\n"
-        "Rules:\n"
-        "- Usually 2 blocks (population/problem and intervention/exposure); add a third only "
-        "if the result would otherwise be far too broad. Outcomes and comparators are rarely "
-        "searched: they are often missing from abstracts.\n"
-        "- For each block give 3 to 10 keywords: synonyms, abbreviations, British/American "
-        "spellings, singular forms. Plain words or phrases only (no wildcards, no quotes, no "
-        "AND/OR).\n"
-        "- For each block give the matching MeSH headings (official spelling), or none if you "
-        "are not sure. They are used for PubMed only.\n\n"
         f"Question: {protocol['question']}\n"
         f"Population: {pico['population']}\n"
         f"Intervention/exposure: {pico['intervention']}\n"
@@ -57,8 +62,78 @@ def build_prompt(protocol: dict) -> str:
         f"Outcomes: {', '.join(pico['outcomes'])}\n"
         f"Study designs: {', '.join(protocol.get('study_designs', [])) or 'any'}\n"
         "Inclusion criteria: " + "; ".join(protocol.get("inclusion_criteria", [])) + "\n"
+        f"Databases: {', '.join(protocol['databases'])}\n"
     )
 
+
+def build_prompt(protocol: dict, max_records: int = 500) -> str:
+    return (
+        "You are an information specialist designing the literature search of a PRISMA 2020 "
+        "systematic review. Synonyms inside a concept block are joined with OR, blocks are "
+        "joined with AND.\n"
+        f"Only the {max_records} most relevant records per database are downloaded and "
+        "screened. A query that matches hundreds of thousands of records therefore loses "
+        "relevant studies beyond that limit: aim for a query that is broad enough to find "
+        "every eligible study and specific enough to stay on the topic.\n"
+        "Rules:\n"
+        "- Always a population/problem block and an intervention/exposure block.\n"
+        "- Add an outcome block when the primary outcome is specific and defines the topic "
+        "(a disease, symptom or measurable condition, e.g. depression), or when population "
+        "AND intervention would match far too many records. Skip it for generic outcomes "
+        "(e.g. effectiveness, wellbeing) that abstracts often do not name.\n"
+        "- Add a design block only if the protocol restricts the study designs (not 'any'): "
+        "design keywords (e.g. randomized, randomised, controlled trial) and, for PubMed, "
+        "publication types (e.g. randomized controlled trial). Otherwise no design block.\n"
+        "- One concept per block, and each term in exactly one block. The population block "
+        "holds only who is studied (age group, setting), never the condition being measured "
+        "as the outcome.\n"
+        "- For each block give 3 to 10 keywords: the words authors write in titles and "
+        "abstracts, 1 to 3 words each (synonyms, abbreviations, British/American spellings, "
+        "singular forms). Never phrases describing a result ('reduction in ...', "
+        "'improvement in ...'). Plain words only (no wildcards, no quotes, no AND/OR).\n"
+        "- For each block give the matching MeSH headings (official spelling), or none if you "
+        "are not sure. They are used for PubMed only.\n"
+        "- Set each block's role (population, intervention, outcome, design).\n\n"
+        + _protocol_lines(protocol)
+    )
+
+
+def _describe_attempt(a: dict) -> str:
+    same = f" (identical to attempt {a['same_as']}: you did not change it)" \
+        if a.get("same_as") else ""
+    lines = [f"Attempt {a['attempt']}{same}:"]
+    for c in a["concepts"]:
+        extra = (f"; MeSH: {', '.join(c['mesh_terms'])}" if c.get("mesh_terms") else "") + \
+                (f"; publication types: {', '.join(c['publication_types'])}"
+                 if c.get("publication_types") else "")
+        lines.append(f"  [{c.get('role', 'other')}] {c['name']}: {', '.join(c['keywords'])}"
+                     f"{extra}")
+    for db, status in a["status"].items():
+        hits = a["counts"].get(db)
+        lines.append(f"  {db}: {hits if hits is not None else 'count failed'} hits -> {status}")
+    return "\n".join(lines)
+
+
+def build_refine_prompt(protocol: dict, attempts: list[dict], *, max_records: int,
+                        max_hits: int, min_hits: int) -> str:
+    return (
+        build_prompt(protocol, max_records)
+        + "\nThe previous plan(s) were run and the databases returned these hit counts "
+        f"(target: between {min_hits} and {max_hits} hits per database):\n"
+        + "\n".join(_describe_attempt(a) for a in attempts)
+        + "\n\nWrite a revised plan. It must differ from every previous attempt.\n"
+        "- Too broad: add a specific block (outcome, or design if the protocol restricts "
+        "designs), or drop generic synonyms that pull in unrelated records.\n"
+        "- Too narrow: drop the least essential block, or add synonyms.\n"
+        "- If every useful block already exists and a database is still too broad, remove "
+        "the most generic synonyms or restrict the design block to the protocol's designs.\n"
+        "- The blocks are shared by all databases. A specialised database may legitimately "
+        "have few hits on this topic: do not broaden the whole search only for it when the "
+        "other databases are in range.\n"
+    )
+
+
+# --- queries, counts, classification ------------------------------------------------
 
 def build_queries(concepts: list[Concept], databases: list[str]) -> dict[str, str]:
     """Database syntax only; no network (``HttpClient`` without cache is never used here)."""
@@ -66,19 +141,104 @@ def build_queries(concepts: list[Concept], databases: list[str]) -> dict[str, st
     return {db: SOURCES[db](http).build_query(concepts) for db in databases}
 
 
-def make_search_strategy(llm: LLM):
+def overlap(concepts: list[dict]) -> list[str]:
+    """Keywords that appear in more than one block (a sign of mixed-up concepts)."""
+    seen: dict[str, int] = {}
+    for i, c in enumerate(concepts):
+        for k in {k.lower() for k in c["keywords"]}:
+            seen[k] = -1 if k in seen and seen[k] != i else i
+    return sorted(k for k, v in seen.items() if v == -1)
+
+
+def classify(counts: dict[str, int], errors: dict[str, str], *, max_hits: int,
+             min_hits: int) -> dict[str, str]:
+    status = {}
+    for db, n in counts.items():
+        status[db] = TOO_BROAD if n > max_hits else TOO_NARROW if n < min_hits else OK
+    status.update({db: ERROR for db in errors})
+    return status
+
+
+def out_of_range(attempt: dict) -> int:
+    return sum(s in (TOO_BROAD, TOO_NARROW) for s in attempt["status"].values())
+
+
+def choose_attempt(attempts: list[dict]) -> dict:
+    """Fewest databases out of range; ties go to the latest attempt."""
+    return min(reversed(attempts), key=out_of_range)
+
+
+def sum_usage(usages: list[Usage]) -> dict:
+    """One audit entry for the stage, whatever the number of LLM calls."""
+    costs = [u.cost_usd for u in usages]
+    return {"model": usages[-1].model, "llm_calls": len(usages),
+            "input_tokens": sum(u.input_tokens for u in usages),
+            "output_tokens": sum(u.output_tokens for u in usages),
+            "cost_usd": None if None in costs else sum(c or 0.0 for c in costs),
+            "cached": all(u.cached for u in usages)}
+
+
+# --- the stage ---------------------------------------------------------------------
+
+def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_records: int = 500,
+                         broad_factor: float = 5, min_hits: int = 20,
+                         max_refinements: int = 2, contact_email: str | None = None,
+                         env: Mapping[str, str] | None = None):
+    """Build the stage. Without ``http`` hit counts are not checked (one LLM call, no
+    network): useful in tests of other stages; real runs always pass ``http``."""
+    max_hits = int(broad_factor * max_records)
+
     def search_strategy(state: ReviewState) -> dict:
         protocol = state["protocol"]
-        plan, usage = llm.call_with_usage(SearchPlan, build_prompt(protocol),
-                                          agent="search_strategy")
-        queries = build_queries(plan.concepts, protocol["databases"])
+        databases = protocol["databases"]
+        filters = {"years": protocol.get("years", {}),
+                   "languages": protocol.get("languages", [])}
+        attempts: list[dict] = []
+        usages: list[Usage] = []
+        prompt = build_prompt(protocol, max_records)
+
+        for number in range(1, max_refinements + 2):
+            plan, usage = llm.call_with_usage(SearchPlan, prompt, agent="search_strategy")
+            usages.append(usage)
+            queries = build_queries(plan.concepts, databases)
+            concepts = [c.model_dump() for c in plan.concepts]
+            attempt = {"attempt": number, "concepts": concepts, "queries": queries,
+                       "rationale": plan.rationale, "counts": {}, "errors": {}, "status": {},
+                       "same_as": next((a["attempt"] for a in attempts
+                                        if a["concepts"] == concepts), None),
+                       "overlap": overlap(concepts)}
+            attempts.append(attempt)
+            if http is None:
+                attempt["reason"] = "hit counts not checked (no HTTP client)"
+                break
+            counts, errors = count_all(queries, filters, http, contact_email=contact_email,
+                                       env=env)
+            attempt.update(counts=counts, errors=errors,
+                           status=classify(counts, errors, max_hits=max_hits,
+                                           min_hits=min_hits))
+            bad = {db: s for db, s in attempt["status"].items() if s in (TOO_BROAD, TOO_NARROW)}
+            if not bad:
+                attempt["reason"] = "all databases within range"
+                break
+            summary = ", ".join(f"{db} {s} ({counts[db]} hits)" for db, s in bad.items())
+            if number > max_refinements:
+                attempt["reason"] = f"{summary}; refinement limit reached"
+                break
+            attempt["reason"] = f"{summary}; refinement requested"
+            prompt = build_refine_prompt(protocol, attempts, max_records=max_records,
+                                         max_hits=max_hits, min_hits=min_hits)
+
+        chosen = choose_attempt(attempts)
         strategy = {
-            "concepts": [c.model_dump() for c in plan.concepts],
-            "queries": queries,
+            "concepts": chosen["concepts"],
+            "queries": chosen["queries"],
             # Filters come from the protocol scope, applied by each connector.
-            "filters": {"years": protocol.get("years", {}),
-                        "languages": protocol.get("languages", [])},
-            "rationale": plan.rationale,
+            "filters": filters,
+            "rationale": chosen["rationale"],
+            "counts": chosen["counts"],
+            "chosen_attempt": chosen["attempt"],
+            "targets": {"min_hits": min_hits, "max_hits": max_hits, "max_records": max_records},
+            "attempts": attempts,
         }
         completed = state.get("completed_stages", [])
         return {
@@ -86,8 +246,10 @@ def make_search_strategy(llm: LLM):
             "completed_stages": ["search_strategy"],
             "audit_log": [{"node": "search_strategy", "step": state.get("steps_taken", 0),
                            "round": stage_round("search_strategy", completed),
-                           "event": "search strategy built", "queries": queries,
-                           **usage.as_dict()}],
+                           "event": "search strategy built", "queries": chosen["queries"],
+                           "attempts": len(attempts), "chosen_attempt": chosen["attempt"],
+                           "counts_per_attempt": [a["counts"] for a in attempts],
+                           **sum_usage(usages)}],
         }
 
     return search_strategy

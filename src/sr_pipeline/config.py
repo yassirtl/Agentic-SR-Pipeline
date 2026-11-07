@@ -12,7 +12,8 @@ the same caches.
 Environment overrides:
   SR_PROJECT_ROOT, SR_CACHE_DIR, SR_HTTP_CACHE_DIR, SR_RUNS_DIR,
   SR_PROTOCOL_TEMPLATE, SR_DEFAULT_MODEL, SR_MAX_RECORDS, SR_MAX_STEPS,
-  SR_CONTACT_EMAIL, SR_MODEL_<AGENT> (e.g. SR_MODEL_EXTRACTION=gpt-4o).
+  SR_CONTACT_EMAIL, SR_BROAD_FACTOR, SR_MIN_HITS, SR_MAX_REFINEMENTS,
+  SR_MODEL_<AGENT> (e.g. SR_MODEL_EXTRACTION=gpt-4o).
 Optional database keys (read from the environment, never stored in the config):
   NCBI_API_KEY (PubMed: 10 requests/s instead of 3), OPENALEX_API_KEY.
 """
@@ -50,6 +51,11 @@ class Config(BaseModel):
                                    description="Per-agent model, e.g. {'extraction': 'gpt-4o'}.")
     max_records: int = Field(500, ge=1, description="Cap on records fetched per database.")
     max_steps: int = Field(40, ge=1, description="Coordinator step budget.")
+    broad_factor: float = Field(
+        5, gt=1, description="Search too broad if a database has more than "
+                             "broad_factor x max_records hits.")
+    min_hits: int = Field(20, ge=0, description="Search too narrow below this many hits.")
+    max_refinements: int = Field(2, ge=0, description="Search refinements after the first plan.")
     contact_email: str | None = Field(
         None, description="Sent to OpenAlex (mailto) and NCBI (email) as a polite contact.")
 
@@ -93,6 +99,9 @@ _ENV_FIELDS = {
     "SR_MAX_RECORDS": "max_records",
     "SR_MAX_STEPS": "max_steps",
     "SR_CONTACT_EMAIL": "contact_email",
+    "SR_BROAD_FACTOR": "broad_factor",
+    "SR_MIN_HITS": "min_hits",
+    "SR_MAX_REFINEMENTS": "max_refinements",
 }
 
 

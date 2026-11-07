@@ -274,7 +274,8 @@ def test_search_strategy_node_builds_queries_for_protocol_databases():
     entry = out["audit_log"][0]
     assert entry["round"] == 1 and entry["queries"] == s["queries"]
     prompt = llm.calls[0][1]
-    assert "adults aged 65 and over" in prompt and "high recall" in prompt
+    assert "adults aged 65 and over" in prompt and "500 most relevant records" in prompt
+    assert s["attempts"][0]["reason"].startswith("hit counts not checked")  # no http given
 
 
 def test_search_plan_schema_rejects_empty_concepts():
@@ -287,6 +288,7 @@ def test_search_plan_schema_rejects_empty_concepts():
 def test_planner_then_search_strategy_in_the_graph():
     draft = {k: PROTOCOL[k] for k in ("title", "pico", "inclusion_criteria",
                                       "exclusion_criteria", "study_designs", "rationale")}
+    draft |= {"databases": ["openalex", "pubmed"], "database_reason": "health topic"}
     llm = ScriptedLLM({"planner": [draft], "search_strategy": [PLAN],
                        "coordinator": [{"next": s, "rationale": "r"} for s in STAGES]})
     template = load_template(ROOT / "protocols" / "template.yaml")
@@ -294,8 +296,8 @@ def test_planner_then_search_strategy_in_the_graph():
                                      "search_strategy": make_search_strategy(llm)})
     state = graph.invoke({"question": PROTOCOL["question"]}, run_config("t-search"))
     assert state["completed_stages"] == list(STAGES)
-    # Template scope (all three databases) flows into the strategy.
-    assert set(state["search_strategy"]["queries"]) == {"openalex", "pubmed", "arxiv"}
+    # The planner's database choice (template: auto) flows into the strategy.
+    assert set(state["search_strategy"]["queries"]) == {"openalex", "pubmed"}
 
 
 # --- config: .env loading ---------------------------------------------------------

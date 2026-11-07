@@ -68,13 +68,24 @@ class OpenAlexSource(Source):
         return join_blocks([" OR ".join(phrase(t) for t in unique_terms(c.keywords))
                             for c in concepts])
 
-    def search(self, query, *, years=None, languages=None, max_records=500) -> SearchResult:
+    @staticmethod
+    def _filter(query, years, languages) -> str:
         filters = [f"title_and_abstract.search:{query}"]
         if (yf := year_filter(years)):
             filters.append(yf)
         codes = [LANGUAGE_CODES[l.lower()] for l in languages or [] if l.lower() in LANGUAGE_CODES]
         if codes:
             filters.append("language:" + "|".join(codes))
+        return ",".join(filters)
+
+    def count(self, query, *, years=None, languages=None) -> int:
+        data = self.http.get_json(BASE_URL, {
+            "filter": self._filter(query, years, languages), "select": "id", "per-page": 1,
+            "mailto": self.contact_email, "api_key": self.api_key})
+        return int(data["meta"]["count"])
+
+    def search(self, query, *, years=None, languages=None, max_records=500) -> SearchResult:
+        filter_ = self._filter(query, years, languages)
 
         # Page numbers, not cursors: cursor paging needs an API key, page paging
         # works without one (up to 10,000 results, far above max_records).
@@ -84,7 +95,7 @@ class OpenAlexSource(Source):
         page, total = 1, 0
         while len(records) < max_records:
             data = self.http.get_json(BASE_URL, {
-                "filter": ",".join(filters), "select": FIELDS,
+                "filter": filter_, "select": FIELDS,
                 "per-page": per_page, "page": page,
                 "mailto": self.contact_email, "api_key": self.api_key,
             })

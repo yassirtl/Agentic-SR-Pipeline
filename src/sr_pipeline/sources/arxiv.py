@@ -48,10 +48,18 @@ class ArxivSource(Source):
             blocks.append(" OR ".join(f"{f}:{t}" for t in terms for f in ("ti", "abs")))
         return join_blocks(blocks)
 
+    @staticmethod
+    def _full(query, years) -> str:
+        dc = date_clause(years)
+        return f"({query}) AND {dc}" if dc else query
+
+    def count(self, query, *, years=None, languages=None) -> int:
+        total, _ = parse_feed(self.http.get_text(API_URL, {
+            "search_query": self._full(query, years), "start": 0, "max_results": 1}))
+        return total
+
     def search(self, query, *, years=None, languages=None, max_records=500) -> SearchResult:
-        full = query
-        if (dc := date_clause(years)):
-            full = f"({query}) AND {dc}"
+        full = self._full(query, years)
         records: list[Record] = []
         total = 0
         while len(records) < max_records:
