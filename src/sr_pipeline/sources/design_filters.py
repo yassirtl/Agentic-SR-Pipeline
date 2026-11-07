@@ -13,7 +13,9 @@ instead of being improvised by the LLM (which wrote exact phrases such as
   randomized controlled trial[pt] OR controlled clinical trial[pt] OR
   randomized[tiab] OR placebo[tiab] OR randomly[tiab] OR trial[ti]
   ("randomised" and "RCT" added: free-text fields are not spelling-normalised).
-  The original's NOT animals[mh] line is left out: our blocks are only AND-ed.
+  Two lines of the published filter are left out: clinical trials as
+  topic[mesh:noexp] (our MeSH terms always explode, [mh]) and NOT
+  (animals[mh] NOT humans[mh]) (our blocks are only AND-ed).
 - Cohort, case-control, cross-sectional: the MeSH heading ([mh] also matches
   the narrower headings, e.g. Cohort Studies -> Prospective / Longitudinal
   Studies) OR the words authors use.
