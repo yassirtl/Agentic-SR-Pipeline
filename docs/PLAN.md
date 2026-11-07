@@ -120,6 +120,7 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 
 ### Part 3: Config, protocol template, Planner
 - **Build:** `config.py` (YAML + env; per-agent model; `max_records`; paths), `protocols/template.yaml` (PICO, inclusion/exclusion, databases, years, languages, study designs), `agents/planner.py` (question → protocol), protocol approval `interrupt` (skipped with `auto=True`), `audit.py` (JSONL writer in `runs/<run_id>/`).
+- **From the 2b review:** the LLM cache dir (`.cache/llm`) is relative to the working directory; make it a config path (absolute, project root) so Colab and local runs find the same cache.
 - **Done when:** fake-LLM test produces a valid protocol; interrupt pauses and resumes with edits.
 - **User runs (Colab):** planner on one question, < 1 min, < $0.01.
 - **Explain:** PICO, why the protocol is fixed first, interrupt/resume.
@@ -139,6 +140,7 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 
 ### Part 6: Screening (title/abstract + full text)
 - **Build:** `agents/screening.py`; screener A (strict prompt) and B (lenient prompt), structured `ScreeningDecision(decision, criterion, reason, quote)`; adjudicator on disagreement; unresolved → `interrupt` (or auto-include in `--auto`); full-text round uses RAG passages per criterion; Cohen's kappa computed; PRISMA counts updated; concurrency + cache.
+- **From the 2b review:** (a) when screening runs concurrently, write cache files atomically (temp file + rename) so a half-written file never breaks a read; (b) after a retrieval re-run, filter `latest()` results to papers still in `unique_records`, so a paper dropped by the new search does not keep an old decision.
 - **Done when:** fake-LLM tests for agree / disagree / adjudicate / human paths; kappa unit test.
 - **User runs (Colab):** ~50 abstracts first (~2 min, ~$0.05), then full topic (10–20 min, ~$0.50–1).
 - **Explain:** dual screening, adjudication, kappa, recall over precision at screening.
