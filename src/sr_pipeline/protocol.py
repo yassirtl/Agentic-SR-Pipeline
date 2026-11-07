@@ -15,6 +15,7 @@ also write ``suggested_designs`` + ``design_reason``: a suggestion the human can
 accept at approval; it is never applied by itself (and never in ``--auto``).
 """
 
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -37,9 +38,18 @@ class PICO(BaseModel):
 class YearRange(BaseModel):
     start: int | None = Field(None, description="First publication year included (None = no limit).")
     end: int | None = Field(None, description="Last publication year included (None = no limit).")
+    end_date: date | None = Field(
+        None, description="Last publication date included (YYYY-MM-DD), when a year is not "
+                          "precise enough, e.g. to match a published review's search date. "
+                          "Sets ``end`` to its year.")
 
     @model_validator(mode="after")
     def _ordered(self):
+        if self.end_date is not None:
+            if self.end is not None and self.end != self.end_date.year:
+                raise ValueError(f"years.end ({self.end}) and years.end_date "
+                                 f"({self.end_date}) disagree")
+            self.end = self.end_date.year
         if self.start is not None and self.end is not None and self.start > self.end:
             raise ValueError(f"years.start ({self.start}) is after years.end ({self.end})")
         return self

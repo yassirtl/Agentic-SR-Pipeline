@@ -67,11 +67,13 @@ class PubMedSource(Source):
     @staticmethod
     def _dates(years) -> dict:
         start, end = (years or {}).get("start"), (years or {}).get("end")
-        if not (start or end):
+        if not (start or end or (years or {}).get("end_date")):
             return {}
         # PubMed needs both bounds
+        end_date = (years or {}).get("end_date")  # 'YYYY-MM-DD' -> PubMed 'YYYY/MM/DD'
         return {"datetype": "pdat", "mindate": str(start or 1800),
-                "maxdate": str(end or date.today().year)}
+                "maxdate": str(end_date).replace("-", "/") if end_date
+                else str(end or date.today().year)}
 
     def count(self, query, *, years=None, languages=None) -> int:
         found = self.http.get_json(f"{EUTILS}/esearch.fcgi", self._params(

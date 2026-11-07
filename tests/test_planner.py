@@ -123,7 +123,7 @@ def test_interrupt_pauses_then_resumes_with_edits():
                                                    "pico": {"comparator": "any"}}}), cfg)
 
     p = final["protocol"]
-    assert p["years"] == {"start": 2018, "end": None}       # nested merge
+    assert p["years"] == {"start": 2018, "end": None, "end_date": None}  # nested merge
     assert p["pico"]["comparator"] == "any"
     assert p["pico"]["population"] == DRAFT["pico"]["population"]  # untouched
     assert final["completed_stages"] == list(STAGES)          # run continued to the end

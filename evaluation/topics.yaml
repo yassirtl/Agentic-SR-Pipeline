@@ -1,0 +1,35 @@
+# Evaluation topics (docs/PLAN.md §4b). Each run must use the same question, designs and
+# search window as the gold-standard review, so recall is measured on equal terms.
+# `years` goes into the protocol template (years.start / years.end_date).
+
+T1:
+  question: How accurate are smartwatches at detecting cardiac arrhythmias?
+  review: Nazarian 2021, J Med Internet Res 23(8):e28974, PMC8433941
+  gold: gold/T1.csv
+  study_designs: []
+  years: {start: null, end_date: 2021-02-28}
+  search_date_source: '"All articles published until February 2021" (month only: last day used)'
+  their_databases: [Embase, MEDLINE, Cochrane Library]
+
+T2:
+  question: How accurate are large language models at automated title and abstract screening for systematic reviews?
+  review: Kim 2025, J Med Artif Intell 8:34, doi 10.21037/jmai-24-408
+  gold: gold/T2.csv
+  study_designs: []
+  years: {start: null, end_date: 2024-08-31}
+  search_date_source: 'Methods "In July 2024", abstract "August 2024", no day: end of August used'
+  their_databases: [MEDLINE, Embase, Scopus]
+
+T3:
+  question: Does exercise reduce depressive symptoms in older adults?
+  review: Li 2024, Front Psychol 15:1484172, PMC11427357
+  gold: gold/T3.csv
+  study_designs: [randomized controlled trial]
+  years: {start: null, end_date: 2024-01-07}
+  search_date_source: '"from establishing the database to January 7, 2024"'
+  their_databases: [Cochrane Library, Web of Science, PubMed, Embase, CNKI, Wanfang]
+  note: >-
+    Table 1 lists 15 articles; the text also says 13 articles / 18 studies. Gold = the 15
+    rows of Table 1. 5 of them are from 2005-2014: the default template start (2015) would
+    exclude them, so years.start must be null. Development question of Parts 4-5 (gold list
+    first opened in Part 6).

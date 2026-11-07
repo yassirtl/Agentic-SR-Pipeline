@@ -27,10 +27,12 @@ NS = {"atom": "http://www.w3.org/2005/Atom",
 
 def date_clause(years: dict | None) -> str | None:
     start, end = (years or {}).get("start"), (years or {}).get("end")
-    if not start and not end:
+    if not start and not end and not (years or {}).get("end_date"):
         return None
+    end_date = (years or {}).get("end_date")
     lo = f"{start or 1991}01010000"
-    hi = f"{end or date.today().year}12312359"
+    hi = (str(end_date).replace("-", "") + "2359") if end_date \
+        else f"{end or date.today().year}12312359"
     return f"submittedDate:[{lo} TO {hi}]"
 
 

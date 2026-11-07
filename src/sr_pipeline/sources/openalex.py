@@ -34,6 +34,10 @@ def rebuild_abstract(index: dict[str, list[int]] | None) -> str | None:
 
 def year_filter(years: dict | None) -> str | None:
     start, end = (years or {}).get("start"), (years or {}).get("end")
+    end_date = (years or {}).get("end_date")
+    if end_date:  # day precision: OpenAlex filters are AND-ed, comma-separated
+        return ",".join(([f"publication_year:>{start - 1}"] if start else [])
+                        + [f"to_publication_date:{end_date}"])
     if start and end:
         return f"publication_year:{start}-{end}"
     if start:
