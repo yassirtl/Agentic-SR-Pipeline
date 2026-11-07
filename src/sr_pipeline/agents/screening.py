@@ -60,7 +60,23 @@ let a network meta-analysis and a trial protocol through.
 - a criterion may carry a positive test sentence
   (``protocol['criterion_tests']``), judged instead of the displayed wording.
 
-Agreement between A and B is measured with Cohen's kappa.
+**Last checks** (Part 6d, from the 6c run; screening rules frozen after this part):
+- **D title rule**: a title that states the record is a review, meta-analysis,
+  protocol, editorial or commentary (``title_rule``: only where the title names the
+  record type, never "screening in systematic reviews" or "two exercise protocols")
+  is excluded on D with the title as the quote, before any LLM call
+  (``resolved_by: d_title_rule``). Seen live: a "study protocol of a randomized
+  controlled trial" got D 'yes' from all three LLM calls;
+- **eligibility-list quotes**: an E 'yes' whose verified quote sits in the study's own
+  eligibility sentence ("exclusion criteria", "were excluded if", "eligible if") is
+  downgraded to ``unclear`` (flag ``eligibility_quote_*``): a study that excluded
+  people with X meets the review's "no X". Seen live: Makizako (gold) lost at full text.
+  Also catches inclusion lists ("inclusion criteria: ... with dementia"), where the
+  exclusion may in fact apply: a record wrongly kept is caught later, one wrongly
+  excluded is lost (recall over precision).
+
+Agreement between A and B is measured with Cohen's kappa (records decided by the title
+rule have no A / B pair and are not counted).
 
 **Full text** (``ft_screening``): only the title/abstract includes. Full text
 from ``sources/fulltext.py`` (PMC XML, open PDF, else abstract only), chunked
@@ -218,7 +234,12 @@ COMMON_RULE = (
     "Multi-arm trials: the study is eligible if at least one pair of arms fits the criteria "
     "(e.g. an exercise arm vs a control arm without exercise). Choose that pair first and "
     "name it in 'comparison', then judge every criterion on that pair; the trial's other "
-    "arms (another intervention, a combined programme) never exclude the study.")
+    "arms (another intervention, a combined programme) never exclude the study.\n"
+    # Seen live (6c): Makizako excluded at full text on E1 by quoting its own exclusion
+    # list ("The exclusion criteria were as follows: ... dementia diagnosis").
+    "A study's own eligibility list says whom it kept out: a study that excluded people "
+    "with X meets the review's 'no X' (for an exclusion criterion on X answer 'no'). Never "
+    "quote a study's exclusion criteria as evidence that an exclusion applies to it.")
 
 VERDICT_RULE = (
     "Give one verdict per criterion, for every criterion, in the order listed. First copy "
@@ -373,6 +394,76 @@ NON_PRIMARY_WORDS = re.compile(
     r"commentary|letter|will be", re.I)
 
 
+# --- Part 6d: D title rule ----------------------------------------------------------
+# Seen live (6c): "...: study protocol of a randomized controlled trial" got D 'yes' from
+# A, B and the adjudicator. A title that *states* the record is a review, protocol or
+# editorial decides D before any LLM call. The words count only where the title names the
+# record type (start, after ':' / '.' / '?' / a dash, closing clause): T2 is about LLMs
+# for systematic reviews, so "screening performance in systematic reviews" (a gold study)
+# must not match; and exercise trials use "protocol" for the programme ("two physical
+# exercise protocols ...: a randomized controlled trial").
+_TYPE_START = r"(?:^|[:.?!–—]\s*|\s?-\s?)"  # also "adults- a review", "frailty-a review"
+# Up to three words that qualify a review type ("a Bayesian network meta-analysis", "Guest
+# editorial"). A fixed list, not any word: "Transforming systematic literature reviews:"
+# (a T2 gold study) must not match.
+_MODIFIERS = (r"(?:(?:an?|the)\s+)?(?:(?:updated|rapid|brief|short|guest|invited|living|"
+              r"cumulative|comprehensive|bayesian|network|pairwise|dose[\s-]response|"
+              r"individual[\s-](?:patient|participant)[\s-]data|ipd|critical|qualitative|"
+              r"quantitative|mixed[\s-]methods?|systematic|narrative|literature|"
+              r"meta[\s-]analytic(?:al)?)\s+){0,3}")
+_REVIEW_TYPE = (r"(?:systematic\s+(?:literature\s+)?reviews?|meta[\s-]?analys[ie]s|"
+                r"meta[\s-]?analytic(?:al)?\s+reviews?|scoping\s+reviews?|umbrella\s+reviews?|editorials?|commentar(?:y|ies))")
+_TYPE_END = (r"(?=\s*$|\s*[:.,;?!&(\[–—]|\s-\s|\s+(?:and|of|on|for|in|with|to|"
+             r"from|including|protocol|update)\b)")
+TITLE_TYPE = re.compile(
+    _TYPE_START + _MODIFIERS + r"(?P<type>" + _REVIEW_TYPE + r")" + _TYPE_END
+    # "study protocol", "trial protocol", "review protocol" anywhere
+    + r"|(?P<proto1>\b(?:study|trial|review|research|rct)\s+protocol)\b"
+    # "Protocol for a randomized trial", "protocol of a pilot RCT"
+    + r"|(?P<proto2>\bprotocol\s+(?:for|of)\s+(?:an?\s+|the\s+)?(?:[\w,-]+\s+){0,6}?"
+      r"(?:trials?|stud(?:y|ies)|rcts?|reviews?|evaluation))\b"
+    # ": protocol ...", title starting with "Protocol", or ending with "... protocol"
+    + r"|(?P<proto3>" + _TYPE_START + r"(?:an?\s+|the\s+)?protocol\b)"
+    + r"|(?P<proto4>\b(?:trial|rct|study|review)\s+protocol\s*\.?\s*$)",
+    re.I)
+
+
+def title_rule(title: str | None) -> str | None:
+    """The words of a title that state the record is not a primary study (review,
+    meta-analysis, protocol, editorial, commentary), else None."""
+    m = TITLE_TYPE.search((title or "").strip())
+    if not m:
+        return None
+    return next(g for g in m.groups() if g).strip(" :.?!-–—")
+
+
+# --- Part 6d: eligibility-list quotes -------------------------------------------------
+# Seen live (6c, Makizako lost at full text): E1 "yes" (disease other than depression)
+# quoting "The exclusion criteria were as follows: ... (2) dementia diagnosis". A study's
+# own eligibility list says whom it kept out (or let in): it is not evidence that the
+# review's exclusion applies to its participants. Phrases are matched on normalised text.
+ELIGIBILITY_WORDS = re.compile(
+    r"\b(?:exclusion|inclusion|eligibility) criteri|\b(?:were|was|are|is|be|been) excluded\b|"
+    r"\bexcluded if\b|\bexclude (?:those|participants|patients|people|individuals|subjects)\b|"
+    r"\bineligible\b|\bnot eligible\b|\beligible if\b|\bwere eligible\b|\bare eligible\b")
+# A sentence ends at . ! ? after a non-digit (so "1. Dementia" stays in its list),
+# followed by a capital; or at a blank line.
+_SENTENCE_END = re.compile(r"(?<=[^\d\s][.!?])\s+(?=[A-Z])|\n\s*\n")
+
+
+def eligibility_sentence(quote: str, text: str) -> str | None:
+    """The quote, or a sentence of ``text`` containing part of it, when it states an
+    eligibility rule ("exclusion criteria", "were excluded if", "eligible if"...)."""
+    if ELIGIBILITY_WORDS.search(_norm(quote)):
+        return quote
+    parts = [p for p in (_norm(q) for q in re.split(r"\.\.\.|…", quote or "")) if p]
+    for sentence in _SENTENCE_END.split(text):
+        norm = _norm(sentence)
+        if any(p in norm for p in parts) and ELIGIBILITY_WORDS.search(norm):
+            return sentence.strip()
+    return None
+
+
 def design_words(protocol: dict) -> re.Pattern | None:
     """Words that name one of the listed designs (None: no design restriction)."""
     words = []
@@ -391,7 +482,8 @@ def check_verdicts(raw: list[dict], crit_ids: list[str], text: str, who: str,
     'unclear'; a failure whose quote is empty or not in the text is downgraded to
     'unclear' (flag ``unverified_<who>_<criterion>``), and so is a D 'no' whose quote
     names a listed design without any non-primary word (flag
-    ``contradicting_quote_<who>_D``). Each verdict gets ``verified``: a non-empty quote
+    ``contradicting_quote_<who>_D``), and so is an E 'yes' whose quote sits in an
+    eligibility sentence (flag ``eligibility_quote_<who>_<criterion>``). Each verdict gets ``verified``: a non-empty quote
     found in the text. Criteria in ``deferred`` (full-text-only, at title/abstract) are
     forced to 'unclear' with ``deferred: True``; the model's answer stays in
     ``met_claimed``."""
@@ -421,6 +513,11 @@ def check_verdicts(raw: list[dict], crit_ids: list[str], text: str, who: str,
         elif fails(cid, v["met"]) and not verified:
             flags.append(f"unverified_{who}_{cid}")
             item["met_claimed"], item["met"] = v["met"], "unclear"
+        elif (cid.startswith("E") and v["met"] == "yes"
+              and (sentence := eligibility_sentence(quote, text))):
+            flags.append(f"eligibility_quote_{who}_{cid}")
+            item["met_claimed"], item["met"] = v["met"], "unclear"
+            item["eligibility_sentence"] = sentence[:500]
         elif (cid == "D" and v["met"] == "no" and design_re is not None
               and design_re.search(quote) and not NON_PRIMARY_WORDS.search(quote)):
             flags.append(f"contradicting_quote_{who}_D")
@@ -472,6 +569,13 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
             "a": None, "b": None, "adjudicator": None, "flags": []}
     if stage == "ta" and not (paper.get("abstract") or "").strip():
         item["flags"].append("no_abstract")
+    if (words := title_rule(paper.get("title"))):
+        # The title states a non-primary record: D fails with the title as the quote, no
+        # LLM call (A / B stay None, like an LLM error; kappa counts LLM-screened pairs).
+        item["flags"].append("d_title_rule")
+        item.update(final="exclude", resolved_by="d_title_rule", criterion="D",
+                    quote=paper.get("title"), title_words=words)
+        return item, []
     usages: list[Usage] = []
     text = evidence  # quotes must come from what the screener was shown
     crit_ids = [cid for cid, _ in criteria(protocol)]
@@ -605,6 +709,9 @@ def ta_counts(decisions: list[dict]) -> dict:
                                 for d in decisions),
         "llm_errors": sum(any(f.startswith("llm_error") for f in d["flags"])
                           for d in decisions),
+        "title_rule": sum("d_title_rule" in d["flags"] for d in decisions),
+        "eligibility_quotes": sum(any(f.startswith("eligibility_quote") for f in d["flags"])
+                                  for d in decisions),
         **_agreement(decisions),
     }
 
@@ -628,6 +735,7 @@ def ft_counts(decisions: list[dict]) -> dict:
         "resolved_by": base["resolved_by"],
         "quotes_not_found": base["quotes_not_found"],
         "llm_errors": base["llm_errors"],
+        "title_rule": base["title_rule"], "eligibility_quotes": base["eligibility_quotes"],
         "pairs": base["pairs"], "agreement": base["agreement"], "kappa": base["kappa"],
     }
 

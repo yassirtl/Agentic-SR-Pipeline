@@ -104,8 +104,11 @@ def test_approval_shows_seeded_protocol_and_edits_are_traced():
 PROTOCOL = {"question": "q", "pico": {}, "study_designs": ["randomized controlled trial"],
             "inclusion_criteria": ["Aged over 60", "Exercise intervention"],
             "exclusion_criteria": ["Comorbidities"]}
-PAPER = {"paper_id": "p1", "title": "A network meta-analysis of exercise in older adults",
-         "abstract": "We pooled 40 randomized trials of adults aged 50 to 90 with diabetes; "
+# Neutral title: the record type is only in the abstract, so the LLM path is tested
+# (a title stating "meta-analysis" is decided by the Part 6d title rule).
+PAPER = {"paper_id": "p1", "title": "Exercise in older adults",
+         "abstract": "This network meta-analysis: we pooled 40 randomized trials of adults "
+                     "aged 50 to 90 with diabetes; "
                      "this study protocol describes the planned analysis."}
 EV = ta_evidence(PAPER)
 
