@@ -22,9 +22,15 @@ Checks by code (deterministic):
 
 Then one LLM pass (``agent="critic"``) reads the sentences next to the evidence tables and
 lists claims the tables do not support (e.g. "exercise was effective" from vote counting,
-a direction reversed). An LLM issue is a blocker only if it quotes the evidence line that
-contradicts the sentence and code finds that quote in the tables; otherwise it is a
-warning (the model may be wrong; a warning never triggers a loop).
+a direction reversed). **An LLM objection is a warning by default** (Part 9 rule): blockers
+come from code checks. It is promoted to a blocker only when it names a value code can
+check and code confirms the mismatch (``confirm_mismatch``): the value the sentence gets
+wrong (a number or a count, digits or words) is written in the sentence, the evidence
+quote is found in the tables, it prints the value the LLM says is right, and it does not
+print the sentence's value. Reason: in the Part 8b run both extra loops were spent on LLM
+objections whose quote was a real line that actually supported the sentence; the old
+rule (verified quote = blocker) could not tell. Objections about direction, wording or
+nuance stay warnings and go to the report's QA section.
 
 **Loop-back** (plan: only blockers loop, at most 2 loops): ``loop_back`` is True when there
 are blockers and the synthesis has been re-run fewer than ``max_loops`` times since the
@@ -39,8 +45,9 @@ from pydantic import BaseModel, Field
 
 from ..llm import LLM
 from ..state import ReviewState, stage_round
-from .extraction import outcomes
+from .extraction import numbers, outcomes
 from .screening import _sum_usage, quote_found
+from .synthesis import number_supported
 
 MAX_LOOPS = 2
 
@@ -59,6 +66,11 @@ class Issue(BaseModel):
     evidence: str = Field("", description="Exact words copied from the evidence tables that "
                           "contradict the sentence; empty if the problem is a missing "
                           "nuance rather than a contradiction.")
+    wrong_value: str = Field("", description="If the sentence states a wrong number or "
+                             "count: that number exactly as the sentence writes it (e.g. "
+                             "'one', '0.48'); else empty.")
+    table_value: str = Field("", description="The number the evidence line gives instead "
+                             "(it must be printed in 'evidence'); else empty.")
     severity: Literal["blocker", "warning"] = Field(
         description="blocker = the sentence is wrong (contradicted, invented, reversed); "
                     "warning = imprecise or incomplete.")
@@ -82,10 +94,47 @@ def critic_prompt(protocol: dict, synthesis: dict) -> str:
         "individual p values or from vote counting without a significant sign test; a "
         "pooled result when no meta-analysis was done; a study described with the wrong "
         "result or risk of bias; a number not in the tables. For a contradiction, copy the "
-        "exact words of the table line that contradicts it in 'evidence'. Do not list "
-        "style issues. An empty list is a correct answer.\n\n"
+        "exact words of the table line that contradicts it in 'evidence'. If the sentence "
+        "gets a number or a count wrong, give the sentence's number in 'wrong_value' and "
+        "the table's number in 'table_value'. A line that agrees with the sentence is not "
+        "a contradiction. Do not list style issues. An empty list is a correct answer.\n\n"
         f"Sentences:\n{sents or '(none)'}\n\nEvidence tables:\n{synthesis['evidence']}"
     )
+
+
+_LABEL = re.compile(r"\bS\d+\b")
+
+
+def _nums(text: str) -> list[float]:
+    """Numbers in digits or words, study labels (S12) left out, signs ignored."""
+    return numbers(_LABEL.sub(" ", text or ""))
+
+
+def confirm_mismatch(sentence: str, wrong_value: str, table_value: str, evidence: str,
+                     tables: str) -> tuple[bool, str]:
+    """Code check of an LLM objection (see module docstring). Returns (confirmed, why).
+
+    Conservative: when the quote also prints the sentence's value (e.g. "high 2, some
+    concerns 1" against "one study was high risk") code cannot tell which number the
+    sentence meant, so the objection stays a warning."""
+    if not (wrong_value.strip() and table_value.strip()):
+        return False, "no checkable value named"
+    wrong, right = _nums(wrong_value), _nums(table_value)
+    if len(wrong) != 1 or len(right) != 1:
+        return False, "value is not a single number"
+    w, t = wrong[0], right[0]
+    if abs(w - t) < 1e-9:
+        return False, "sentence value equals the table value"
+    if not any(abs(w - n) < 1e-9 for n in _nums(sentence)):
+        return False, f"{w:g} is not written in the sentence"
+    if not (evidence.strip() and quote_found(evidence, tables)):
+        return False, "evidence quote not found in the tables"
+    quoted = _nums(evidence)
+    if not number_supported(f"{t:g}", quoted):
+        return False, f"{t:g} is not printed in the quote"
+    if number_supported(f"{w:g}", quoted):
+        return False, f"the quote also prints {w:g}"
+    return True, f"sentence says {w:g}, the quoted line gives {t:g}"
 
 
 def _issue(severity: str, kind: str, detail: str, **extra) -> dict:
@@ -205,12 +254,18 @@ def make_critic(llm: LLM, *, max_loops: int = MAX_LOOPS):
                         continue
                     verified = bool(it.evidence.strip()) and quote_found(it.evidence,
                                                                          syn["evidence"])
-                    sev = "blocker" if it.severity == "blocker" and verified else "warning"
                     text = syn["narrative"][it.sentence - 1]["text"]
+                    confirmed, why = confirm_mismatch(text, it.wrong_value, it.table_value,
+                                                      it.evidence, syn["evidence"])
+                    # Warning by default; blocker only when code confirms a wrong value.
+                    sev = "blocker" if confirmed else "warning"
                     issues.append(_issue(sev, "llm_unsupported_claim",
                                          f"sentence {it.sentence} ('{text[:120]}'): "
                                          f"{it.problem}", sentence=it.sentence,
                                          evidence=it.evidence, evidence_verified=verified,
+                                         wrong_value=it.wrong_value,
+                                         table_value=it.table_value,
+                                         confirmed_by_code=confirmed, check=why,
                                          severity_claimed=it.severity))
             except Exception as exc:  # the code checks still stand
                 issues.append(_issue("warning", "critic_llm_error",

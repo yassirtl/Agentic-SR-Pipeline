@@ -26,7 +26,13 @@ dependencies = [
     "openai~=3.46",       # embeddings (also installed by langchain-openai)
     # Part 8: forest plots (statistics are plain Python, no SciPy)
     "matplotlib~=3.10.0",
+    # Part 9: report export and resumable runs
+    "python-docx~=1.2",
+    "langgraph-checkpoint-sqlite~=3.1",
 ]
+
+[project.scripts]
+sr-review = "sr_pipeline.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]

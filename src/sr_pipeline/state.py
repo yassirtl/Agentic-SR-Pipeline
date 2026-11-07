@@ -31,6 +31,9 @@ class ReviewState(TypedDict, total=False):
     synthesis: dict
     qa_report: dict
     prisma_counts: dict
+    report: dict                             # files written by the report stage
+
+    run: dict                                # run_id, started_at (set by the CLI)
 
     # Order matters: the guardrail uses positions in this list as a clock.
     completed_stages: Annotated[list, operator.add]

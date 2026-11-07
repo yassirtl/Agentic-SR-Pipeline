@@ -364,7 +364,9 @@ def test_critic_passes_and_llm_blocker_needs_verified_evidence(tmp_path):
     llm = ScriptedLLM({"critic": [{"issues": [{"sentence": 1, "problem": "p", "evidence": line,
                                                "severity": "blocker"}]}]})
     qa = make_critic(llm)(st)["qa_report"]
-    assert qa["blockers"] == 1 and qa["issues"][0]["evidence_verified"]
+    # Part 9 rule: a verified quote is no longer enough (this line supports the sentence).
+    assert qa["blockers"] == 0 and qa["issues"][0]["evidence_verified"]
+    assert qa["issues"][0]["severity"] == "warning" and not qa["loop_back"]
 
 
 def test_loops_used_and_loop_rule():

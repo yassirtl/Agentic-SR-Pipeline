@@ -25,6 +25,13 @@ Diagnostic accuracy
   specificity; it needs a mixed-model fit (R mada / metafor). The univariate model is a
   stated limitation.
 
+Prediction interval (Higgins, Thompson & Spiegelhalter 2009; Cochrane Handbook 10.10.4.3):
+where the true effect of a new study would lie, given the between-study spread:
+    pooled +- t_{k-2, 0.975} sqrt(tau^2 + SE^2),   only for k >= 3
+  With k = 3 the t quantile has 1 degree of freedom (12.71), so the interval is very wide:
+  that is the honest answer for 3 studies. The t quantile is computed here (regularised
+  incomplete beta by continued fraction, Numerical Recipes 6.4; inverted by bisection).
+
 Vote counting by direction of effect (SWiM, Campbell 2020): two-sided sign test on the
 studies favouring each side (studies with no difference left out).
 """
@@ -122,3 +129,66 @@ def sign_test(positive: int, negative: int) -> float | None:
     k = min(positive, negative)
     tail = sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n
     return min(1.0, 2 * tail)
+
+
+def _betacf(a: float, b: float, x: float) -> float:
+    """Continued fraction of the incomplete beta function (modified Lentz)."""
+    tiny, qab, qap, qam = 1e-300, a + b, a + 1, a - 1
+    c, d = 1.0, 1 - qab * x / qap
+    d = 1 / (d if abs(d) > tiny else tiny)
+    h = d
+    for m in range(1, 300):
+        m2 = 2 * m
+        for aa in (m * (b - m) * x / ((qam + m2) * (a + m2)),
+                   -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))):
+            d = 1 + aa * d
+            d = 1 / (d if abs(d) > tiny else tiny)
+            c = 1 + aa / c
+            c = c if abs(c) > tiny else tiny
+            h *= d * c
+        if abs(d * c - 1) < 1e-15:
+            break
+    return h
+
+
+def betainc(a: float, b: float, x: float) -> float:
+    """Regularised incomplete beta I_x(a, b)."""
+    if x <= 0:
+        return 0.0
+    if x >= 1:
+        return 1.0
+    front = math.exp(math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+                     + a * math.log(x) + b * math.log(1 - x))
+    if x < (a + 1) / (a + b + 2):
+        return front * _betacf(a, b, x) / a
+    return 1 - front * _betacf(b, a, 1 - x) / b
+
+
+def t_cdf(t: float, df: float) -> float:
+    """P(T <= t) for Student's t with ``df`` degrees of freedom."""
+    tail = 0.5 * betainc(df / 2, 0.5, df / (df + t * t))
+    return 1 - tail if t >= 0 else tail
+
+
+def t_quantile(p: float, df: float) -> float:
+    """Inverse of ``t_cdf`` (bisection; 0 < p < 1)."""
+    if not 0 < p < 1 or df <= 0:
+        raise ValueError("need 0 < p < 1 and df > 0")
+    if p < 0.5:
+        return -t_quantile(1 - p, df)
+    lo, hi = 0.0, 1.0
+    while t_cdf(hi, df) < p:
+        hi *= 2
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if t_cdf(mid, df) < p else (lo, mid)
+    return (lo + hi) / 2
+
+
+def prediction_interval(meta: dict) -> tuple[float, float] | None:
+    """95% prediction interval of a ``dersimonian_laird`` result; None when k < 3."""
+    k = meta["k"]
+    if k < 3:
+        return None
+    half = t_quantile(0.975, k - 2) * math.sqrt(meta["tau2"] + meta["se"] ** 2)
+    return meta["pooled"] - half, meta["pooled"] + half
