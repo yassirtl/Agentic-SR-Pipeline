@@ -4,6 +4,7 @@ fake-LLM end-to-end run. Scripted LLM, fake embedder, fake search and full text,
 import json
 import math
 import re
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -277,6 +278,10 @@ def check_outputs(cfg, run_id, state):
     assert "@article{author2016," in Path(files["references.bib"]).read_text()
     rows = Path(files["tables/screening.csv"]).read_text().splitlines()
     assert len(rows) == 1 + 5                          # header + 5 unique records
+    summary = json.loads(Path(files["run_summary.json"]).read_text())
+    assert set(summary["llm"]["per_node"]) >= {"coordinator", "planner", "search_strategy",
+                                               "ta_screening", "ft_screening", "extraction",
+                                               "synthesis", "critic"}
     audit = [json.loads(x) for x in (run_dir / "audit.jsonl").read_text().splitlines()]
     assert audit[-1]["node"] == "report"
     assert not [e for e in audit if e.get("outcome") == "llm_error"]
@@ -308,6 +313,10 @@ def test_auto_run_never_pauses_and_resume_of_a_finished_run(tmp_path):
     # --auto never applies the design suggestion; the unresolved paper is auto-included.
     assert state["protocol"]["study_designs"] == []
     assert state["prisma_counts"]["title_abstract"]["included"] == 4
+    # Finished run: only the final checkpoint is kept, and resuming still sees it.
+    con = sqlite3.connect(cfg.runs_dir / run_id / "checkpoints.sqlite")
+    assert con.execute("select count(*) from checkpoints").fetchone() == (1,)
+    con.close()
     said = []
     _, again = cli.run(cfg, question=None, topic_id=None, auto=False, resume=run_id,
                        ask=ask, out=said.append, llm=e2e_llm(), **INJECT)
@@ -346,3 +355,32 @@ def test_main_argument_errors(capsys):
         cli.main(["other question", "--topic", "T3"])
     with pytest.raises(SystemExit):
         cli.main(["--topic", "T9"])
+
+
+def test_crash_in_a_stage_then_resume_continues_from_the_last_checkpoint(tmp_path):
+    cfg = e2e_config(tmp_path)
+    crash = {"left": 1}
+
+    def flaky_extractor(prompt):          # the process dies once, in the middle of extraction
+        if crash["left"]:
+            crash["left"] -= 1
+            raise KeyboardInterrupt
+        return extractor(prompt)
+
+    llm = e2e_llm()
+    llm.script["extraction"] = flaky_extractor
+    cfg = cfg.model_copy(update={"screening_workers": 1})
+    with pytest.raises(KeyboardInterrupt):
+        cli.run(cfg, question=QUESTION, topic_id=None, auto=True, ask=Answers([]),
+                out=lambda *a: None, llm=llm, **INJECT)
+    run_id = next(p.name for p in cfg.runs_dir.iterdir())
+    before = [a for a, _ in llm.calls]
+    assert "synthesis" not in before
+    said = []
+    _, state = cli.run(cfg, question=None, topic_id=None, auto=False, resume=run_id,
+                       ask=Answers([]), out=said.append, llm=llm, **INJECT)
+    assert "Resuming run" in said[0] and "extraction" in said[0]
+    assert state["completed_stages"] == list(STAGES)
+    after = [a for a, _ in llm.calls][len(before):]
+    assert not [a for a in after if a.startswith(("screener", "adjudicator", "planner"))]
+    check_outputs(cfg, run_id, state)

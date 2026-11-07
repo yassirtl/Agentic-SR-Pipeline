@@ -121,6 +121,18 @@ def open_checkpointer(run_dir: Path) -> SqliteSaver:
                                        check_same_thread=False))
 
 
+def compact_checkpoints(run_dir: Path, checkpoint_id: str) -> None:
+    """Keep only the final checkpoint of a finished run. SqliteSaver stores the whole state
+    at every step (a real run: tens of steps x a state of many MB); once the report is
+    written only the last one is needed (``--resume`` then says the run is finished)."""
+    con = sqlite3.connect(run_dir / "checkpoints.sqlite")
+    with con:
+        con.execute("DELETE FROM checkpoints WHERE checkpoint_id != ?", (checkpoint_id,))
+        con.execute("DELETE FROM writes WHERE checkpoint_id != ?", (checkpoint_id,))
+    con.execute("VACUUM")
+    con.close()
+
+
 def drive(graph, config: dict, first, audit: AuditWriter, ask: Ask, out=print) -> dict:
     """Invoke, answer every interrupt, sync the audit after each pause. Returns the state."""
     result = graph.invoke(first, config)
@@ -176,6 +188,9 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
         out(f"Run {run_id}: {question}\nOutputs in {run_dir}")
     state = drive(graph, config, first, audit, ask, out)
     (run_dir / "state.json").write_text(json.dumps(state, indent=2, default=str))
+    snap = graph.get_state(config)
+    if state.get("report") and not snap.next:
+        compact_checkpoints(run_dir, snap.config["configurable"]["checkpoint_id"])
     return run_id, state
 
 
