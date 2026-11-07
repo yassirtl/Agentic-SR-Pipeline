@@ -23,6 +23,8 @@ second run is free and gives the same text.
 import io
 import logging
 import os
+import re
+import warnings
 import xml.etree.ElementTree as ET
 from collections.abc import Mapping
 from typing import Literal
@@ -143,14 +145,48 @@ def normalize_pmcid(pmcid: str) -> str:
 
 # --- PDF ----------------------------------------------------------------------------
 
+# A line that is only a reference-list heading ("References", "REFERENCES", "Literature cited").
+REF_HEADING = re.compile(r"^\s*(\d+\.?\s*)?(references|bibliography|literature cited|works cited)"
+                         r"\s*:?\s*$", re.I | re.M)
+# A word cut at the end of a line: "random-\nized" -> "randomized" (lower-case next line only,
+# so "COVID-\n19" and list dashes are kept).
+LINE_HYPHEN = re.compile(r"(\w)-[ \t]*\n[ \t]*([a-z])")
+
+
+def strip_references(pages: list[str]) -> list[str]:
+    """Cut the text at the LAST reference-list heading in the second half of the document.
+
+    JATS full text never contains the reference list; PDF text does, and a screener
+    or extractor must not quote a cited paper's title as evidence. The last heading
+    is used (a table of contents may name "References" early); the second-half guard
+    keeps a stray early heading from deleting the paper.
+    """
+    if not pages:
+        return pages
+    half = len(pages) // 2
+    for n in range(len(pages) - 1, half - 1, -1):
+        matches = list(REF_HEADING.finditer(pages[n]))
+        if matches:
+            return pages[:n] + [pages[n][:matches[-1].start()]]
+    return pages
+
+
 def pdf_sections(data: bytes) -> list[Section]:
-    """Text of each page (pypdf). Empty list when the PDF has no text layer (scanned)."""
+    """Text of each page (pypdf), reference list removed, line-end hyphens re-joined.
+    Empty list when the PDF has no text layer (scanned)."""
     from pypdf import PdfReader  # imported lazily: only needed when a PDF is downloaded
 
-    reader = PdfReader(io.BytesIO(data))
+    # pypdf and fontTools log harmless warnings for odd fonts; keep the console readable.
+    for name in ("pypdf", "fontTools"):
+        logging.getLogger(name).setLevel(logging.ERROR)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        reader = PdfReader(io.BytesIO(data))
+        pages = [page.extract_text() or "" for page in reader.pages]
+    pages = strip_references([LINE_HYPHEN.sub(r"\1\2", p) for p in pages])
     out = []
-    for n, page in enumerate(reader.pages, start=1):
-        text = clean_text(page.extract_text() or "")
+    for n, raw in enumerate(pages, start=1):
+        text = clean_text(raw)
         if text:
             out.append(Section(title=f"Page {n}", text=text))
     return out

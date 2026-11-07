@@ -1,6 +1,10 @@
 # Evaluation topics (docs/PLAN.md §4b). Each run must use the same question, designs and
 # search window as the gold-standard review, so recall is measured on equal terms.
 # `years` goes into the protocol template (years.start / years.end_date).
+# Eligibility criteria: set the review's own criteria at protocol approval (edits), not
+# the Planner's draft. Seen in Part 6: the Planner wrote "aged 65 or older" for T3,
+# whose review used "over 60", and that criterion alone drove most exclusions.
+# T1 / T2 criteria: to copy from the papers before their runs (Part 10).
 
 T1:
   question: How accurate are smartwatches at detecting cardiac arrhythmias?
@@ -28,8 +32,22 @@ T3:
   years: {start: null, end_date: 2024-01-07}
   search_date_source: '"from establishing the database to January 7, 2024"'
   their_databases: [Cochrane Library, Web of Science, PubMed, Embase, CNKI, Wanfang]
+  inclusion_criteria:   # Li 2024, section 2.2 (abridged)
+    - Randomized controlled trial
+    - Healthy older adults aged over 60 years
+    - No significant baseline difference between experimental and control groups
+    - Intervention is physical exercise; the control group does no regular exercise
+    - Depression measured with GDS, GDS-15, SCL-90, SGDS-K, TDQ or TGDS
+    - Data reported as mean and standard deviation
+  exclusion_criteria:
+    - Older adults with comorbidities or below 60 years of age
+    - Interventions beyond exercise
+    - Incomplete data or no control group
+  languages: [English, Chinese]
   note: >-
     Table 1 lists 15 articles; the text also says 13 articles / 18 studies. Gold = the 15
     rows of Table 1. 5 of them are from 2005-2014: the default template start (2015) would
     exclude them, so years.start must be null. Development question of Parts 4-5 (gold list
-    first opened in Part 6).
+    first opened in Part 6). Their own gold list departs from their criteria (Makizako:
+    exercise vs horticulture arms; Shahidi: laughter yoga vs exercise), so criteria-exact
+    screening may exclude a few gold studies: count them separately in Part 10.

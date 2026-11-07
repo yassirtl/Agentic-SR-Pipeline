@@ -13,7 +13,7 @@ Environment overrides:
   SR_PROJECT_ROOT, SR_CACHE_DIR, SR_HTTP_CACHE_DIR, SR_RUNS_DIR,
   SR_PROTOCOL_TEMPLATE, SR_DEFAULT_MODEL, SR_MAX_RECORDS, SR_MAX_STEPS,
   SR_CONTACT_EMAIL, SR_MIN_HITS, SR_MAX_REFINEMENTS, SR_EMBEDDING_MODEL,
-  SR_EMBEDDING_CACHE,
+  SR_EMBEDDING_CACHE, SR_SCREENING_WORKERS,
   SR_MODEL_<AGENT> (e.g. SR_MODEL_EXTRACTION=gpt-4o).
 Optional database keys (read from the environment, never stored in the config):
   NCBI_API_KEY (PubMed: 10 requests/s instead of 3), OPENALEX_API_KEY.
@@ -68,6 +68,15 @@ class Config(BaseModel):
     chunk_overlap: int = Field(40, ge=0)
     rerank_top: int = Field(20, ge=1)
 
+    # Screening (Part 6): records screened in parallel threads; at full text, the
+    # hybrid index gives ft_candidates passages per (paper, criterion), the LLM
+    # re-ranks them and the screeners read the best ft_passages.
+    screening_workers: int = Field(8, ge=1)
+    ft_candidates: int = Field(10, ge=1)
+    ft_passages: int = Field(5, ge=1)
+    ft_rerank: bool = Field(True, description="LLM re-ranking of each criterion's passages "
+                            "(most of the full-text cost; off = fused hybrid order).")
+
     project_root: Path = Field(default_factory=find_project_root)
     cache_dir: Path = Path(".cache/llm")
     http_cache_dir: Path = Path(".cache/http")
@@ -120,6 +129,7 @@ _ENV_FIELDS = {
     "SR_MAX_REFINEMENTS": "max_refinements",
     "SR_EMBEDDING_MODEL": "embedding_model",
     "SR_EMBEDDING_CACHE": "embedding_cache",
+    "SR_SCREENING_WORKERS": "screening_workers",
 }
 
 

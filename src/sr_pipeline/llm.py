@@ -11,6 +11,8 @@ returns the stored answer, without calling the API.
 
 import hashlib
 import json
+import threading
+import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Callable, Protocol, TypeVar
@@ -98,14 +100,16 @@ class OpenAILLM(_Base):
         self.cache_dir = Path(cache_dir) if cache_dir else find_project_root() / DEFAULT_CACHE_SUBDIR
         self.chat_factory = chat_factory
         self._clients: dict[str, Any] = {}  # one client per model, built once
+        self._lock = threading.Lock()       # screening calls the LLM from several threads
 
     def model_for(self, agent: str) -> str:
         return self.models.get(agent, self.default)
 
     def _client(self, model: str):
-        if model not in self._clients:
-            self._clients[model] = self.chat_factory(model)
-        return self._clients[model]
+        with self._lock:
+            if model not in self._clients:
+                self._clients[model] = self.chat_factory(model)
+            return self._clients[model]
 
     def call_with_usage(self, schema: type[T], prompt: str, *, agent: str) -> tuple[T, Usage]:
         model = self.model_for(agent)
@@ -127,9 +131,13 @@ class OpenAILLM(_Base):
         usage = Usage(model, tin, tout, cost_usd=compute_cost(model, tin, tout))
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"model": model, "schema": schema.__name__,
-                                    "parsed": parsed.model_dump(mode="json"),
-                                    "input_tokens": tin, "output_tokens": tout}, indent=2))
+        # Atomic write (unique temp file, then rename): with concurrent screening a
+        # reader never sees a half-written cache file.
+        tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+        tmp.write_text(json.dumps({"model": model, "schema": schema.__name__,
+                                   "parsed": parsed.model_dump(mode="json"),
+                                   "input_tokens": tin, "output_tokens": tout}, indent=2))
+        tmp.replace(path)
         return parsed, usage
 
 
@@ -137,20 +145,28 @@ class ScriptedLLM(_Base):
     """Test double: returns pre-written answers in order, one queue per agent.
 
     Answers may be schema instances, plain dicts (validated against the schema),
-    or exceptions (raised, to simulate a failing LLM). Every call is recorded in
-    ``self.calls`` as ``(agent, prompt)``.
+    or exceptions (raised, to simulate a failing LLM). An agent's script may
+    also be a function ``prompt -> answer``: the answer then depends on the
+    prompt, not on call order (needed when calls run in several threads).
+    Every call is recorded in ``self.calls`` as ``(agent, prompt)``.
     """
 
-    def __init__(self, script: dict[str, list[Any]]):
-        self.script = {agent: list(answers) for agent, answers in script.items()}
+    def __init__(self, script: dict[str, list[Any] | Callable[[str], Any]]):
+        self.script = {agent: answers if callable(answers) else list(answers)
+                       for agent, answers in script.items()}
         self.calls: list[tuple[str, str]] = []
+        self._lock = threading.Lock()
 
     def call_with_usage(self, schema: type[T], prompt: str, *, agent: str) -> tuple[T, Usage]:
-        self.calls.append((agent, prompt))
-        queue = self.script.get(agent)
-        if not queue:
-            raise RuntimeError(f"ScriptedLLM: no scripted answer left for agent '{agent}'")
-        answer = queue.pop(0)
+        with self._lock:
+            self.calls.append((agent, prompt))
+            queue = self.script.get(agent)
+            if callable(queue):
+                answer = queue(prompt)
+            elif not queue:
+                raise RuntimeError(f"ScriptedLLM: no scripted answer left for agent '{agent}'")
+            else:
+                answer = queue.pop(0)
         if isinstance(answer, BaseException):
             raise answer
         parsed = answer if isinstance(answer, schema) else schema.model_validate(answer)

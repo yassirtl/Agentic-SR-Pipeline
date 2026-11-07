@@ -6,6 +6,9 @@ default_model: gpt-4o-mini
 models:              # per-agent model; agents not listed use default_model
   planner: gpt-4o-mini
   coordinator: gpt-4o-mini
+  # screener_a: gpt-4o-mini   # strict screener
+  # screener_b: gpt-4o-mini   # lenient screener
+  # adjudicator: gpt-4o       # third reviewer on disagreements
   # extraction: gpt-4o
   # synthesis: gpt-4o
 
@@ -29,6 +32,15 @@ embedding_model: text-embedding-3-small
 chunk_words: 250
 chunk_overlap: 40
 rerank_top: 20
+
+# Screening (Part 6): dual screening (strict A + lenient B), adjudicator on
+# disagreement. Records are screened in screening_workers threads. Full text:
+# ft_candidates passages per (paper, criterion) are re-ranked, the screeners
+# read the best ft_passages.
+screening_workers: 8
+ft_candidates: 10
+ft_passages: 5
+ft_rerank: true      # re-rank each criterion's passages with the LLM (about half the full-text cost)
 
 # Relative paths are resolved under the project root.
 cache_dir: .cache/llm

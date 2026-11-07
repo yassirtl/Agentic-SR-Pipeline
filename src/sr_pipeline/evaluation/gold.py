@@ -205,3 +205,24 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+# --- Matching gold articles to our papers ------------------------------------------------
+
+def match_gold(rows: list[dict], papers: list[dict]) -> dict[str, str]:
+    """{gold row: paper_id} for gold articles present among ``papers`` (by DOI, else PMID).
+
+    Uses the identifiers found by the coverage lookup (``found_doi`` / ``found_pmid``)
+    when the gold file is a ``*_coverage.csv``, so articles the review cited without
+    a DOI are recognised too."""
+    by_doi = {normalize_doi(p.get("doi")): p["paper_id"] for p in papers if p.get("doi")}
+    by_pmid = {str(p["pmid"]): p["paper_id"] for p in papers if p.get("pmid")}
+    out = {}
+    for r in rows:
+        doi = normalize_doi(r.get("found_doi") or r.get("doi"))
+        pmid = r.get("found_pmid") or r.get("pmid")
+        pid = by_doi.get(doi) if doi else None
+        pid = pid or (by_pmid.get(str(pmid)) if pmid else None)
+        if pid:
+            out[r["row"]] = pid
+    return out
