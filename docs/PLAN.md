@@ -165,8 +165,8 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 | Part | Status | Notes |
 |---|---|---|
 | 1 Architecture + strategy deck | done | 2026-11-07 |
-| 2 Skeleton | next | repo has `.gitignore` + `pyproject.toml` only |
-| 3 Config + Planner | todo | |
+| 2 Skeleton | done | 2026-11-07 · 7 tests green; LLM disk cache + token cost (§3.4) deferred to a later part |
+| 3 Config + Planner | next | |
 | 4 Search + sources | todo | |
 | 5 Retrieval + RAG | todo | |
 | 6 Screening | todo | |
