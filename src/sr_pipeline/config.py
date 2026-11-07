@@ -13,7 +13,7 @@ Environment overrides:
   SR_PROJECT_ROOT, SR_CACHE_DIR, SR_HTTP_CACHE_DIR, SR_RUNS_DIR,
   SR_PROTOCOL_TEMPLATE, SR_DEFAULT_MODEL, SR_MAX_RECORDS, SR_MAX_STEPS,
   SR_CONTACT_EMAIL, SR_MIN_HITS, SR_MAX_REFINEMENTS, SR_EMBEDDING_MODEL,
-  SR_EMBEDDING_CACHE, SR_SCREENING_WORKERS,
+  SR_EMBEDDING_CACHE, SR_SCREENING_WORKERS, SR_SCREEN_LIMIT,
   SR_MODEL_<AGENT> (e.g. SR_MODEL_EXTRACTION=gpt-4o).
 Optional database keys (read from the environment, never stored in the config):
   NCBI_API_KEY (PubMed: 10 requests/s instead of 3), OPENALEX_API_KEY.
@@ -55,6 +55,12 @@ class Config(BaseModel):
         description="Download ceiling per database, and upper end of the search's 'ok' hit "
                     "range: hits above it are reported as not retrieved. 10,000 = OpenAlex "
                     "page-paging and PubMed retmax limit.")
+    screen_limit: int | None = Field(
+        100, ge=0,
+        description="Part 9b: title/abstract screening reads only the N best-ranked unique "
+                    "records (relevance order of each database); the rest are reported in "
+                    "PRISMA as 'not screened (limit N)'. 0 or null = screen every record. "
+                    "Separate from max_records (the search's download ceiling).")
     max_steps: int = Field(40, ge=1, description="Coordinator step budget.")
     min_hits: int = Field(20, ge=0, description="Search too narrow below this many hits.")
     max_refinements: int = Field(2, ge=0, description="Search refinements after the first plan.")
@@ -130,6 +136,7 @@ _ENV_FIELDS = {
     "SR_EMBEDDING_MODEL": "embedding_model",
     "SR_EMBEDDING_CACHE": "embedding_cache",
     "SR_SCREENING_WORKERS": "screening_workers",
+    "SR_SCREEN_LIMIT": "screen_limit",
 }
 
 

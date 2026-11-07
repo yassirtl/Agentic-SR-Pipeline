@@ -112,6 +112,9 @@ def build_prompt(question: str, template: Template) -> str:
         "- Criteria must be short and testable from a title, abstract or full text. List in "
         "full_text_criteria (copied word for word) those an abstract can never show.\n"
         "- One idea per criterion; do not repeat the scope (databases, years, languages).\n"
+        "- For each criterion, a short label (criterion_labels, at most 5 words): the reason "
+        "a record is excluded on it, e.g. 'not older adults', 'comorbidities', 'no control "
+        "group'.\n"
         "- Keep every element the user fixed below; refine, do not contradict.\n"
         + (DATABASE_RULE if auto else "")
         + f"\nResearch question: {question}\n"

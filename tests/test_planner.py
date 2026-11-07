@@ -1,5 +1,6 @@
 """Part 3: config, protocol template, Planner, approval interrupt, audit writer."""
 
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -77,7 +78,8 @@ def test_config_precedence_defaults_yaml_env(tmp_path):
 def test_template_is_valid():
     t = load_template(TEMPLATE)
     assert t.databases == "auto"
-    assert t.years.start == 2015
+    # Part 9b: last 5 years by default (start computed from this year).
+    assert t.years.recent == 5 and t.years.start == date.today().year - 5
 
 
 def test_planner_produces_a_valid_protocol_with_template_scope():
@@ -123,7 +125,8 @@ def test_interrupt_pauses_then_resumes_with_edits():
                                                    "pico": {"comparator": "any"}}}), cfg)
 
     p = final["protocol"]
-    assert p["years"] == {"start": 2018, "end": None, "end_date": None}  # nested merge
+    assert p["years"] == {"start": 2018, "end": None, "end_date": None,
+                          "recent": 5}  # nested merge; an explicit start wins over recent
     assert p["pico"]["comparator"] == "any"
     assert p["pico"]["population"] == DRAFT["pico"]["population"]  # untouched
     assert final["completed_stages"] == list(STAGES)          # run continued to the end
@@ -144,7 +147,7 @@ def test_invalid_edits_ask_again():
     assert graph.get_state(cfg).next == ("protocol_approval",)
 
     final = graph.invoke(Command(resume=True), cfg)
-    assert final["protocol"]["years"]["start"] == 2015      # unchanged template value
+    assert final["protocol"]["years"]["start"] == date.today().year - 5   # template value
     assert final["completed_stages"] == list(STAGES)
     approval = next(e for e in final["audit_log"] if e["node"] == "protocol_approval")
     assert approval["attempts"] == 2

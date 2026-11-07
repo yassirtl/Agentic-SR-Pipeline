@@ -16,6 +16,10 @@ Checks by code (deterministic):
 - **metric conflicts** (Part 8b): a study whose direction depends on the metric is named
   in a sentence that says so (blocker); a study against the majority direction is a
   warning (a human checks the source; values are never corrected);
+- **wording vs heterogeneity** (Part 9b): when a pooled result has I2 >= 75% (not
+  interpretable as a single effect), an effect-size word about it ("negligible", "small",
+  "moderate", "large") or "no effect" is a blocker; on the narrative path with a sign test
+  that is not significant, "no effect" is a blocker ("no evidence of a direction");
 - **abstract-only studies flagged**: when some studies were extracted from the abstract
   only, the text must say so (warning; the citations already carry a dagger);
 - **synthesis errors**: an LLM error left no text (blocker).
@@ -47,7 +51,7 @@ from ..llm import LLM
 from ..state import ReviewState, stage_round
 from .extraction import numbers, outcomes
 from .screening import _sum_usage, quote_found
-from .synthesis import number_supported
+from .synthesis import number_supported, wording_problems
 
 MAX_LOOPS = 2
 
@@ -204,6 +208,15 @@ def code_checks(state: ReviewState) -> list[dict]:
             issues.append(_issue("warning", "direction_against_majority",
                                  f"{label} ({g['id']}) points the other way from the majority "
                                  f"({g['majority']}): check the values in the source"))
+
+    # Wording the numbers do not allow (Part 9b fix 3): this outcome's sentences, its
+    # heterogeneity statement and the 'overall' sentences.
+    for g in syn["outcomes"]:
+        texts = ([x for x in sents if x["section"] in (g["id"], "overall")]
+                 + [h for h in het if h["section"] == g["id"]])
+        for w in wording_problems(g, texts):
+            issues.append(_issue("blocker", w["kind"], f"{g['id']}: '{w['text'][:120]}' "
+                                 f"says '{w['words']}'; {w['reason']}"))
 
     # Count consistency
     n_syn = len(syn["studies"])

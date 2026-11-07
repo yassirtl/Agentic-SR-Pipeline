@@ -6,6 +6,10 @@
                                             # auto-included)
     sr-review --resume 20261108-101500-a1b2c3   # continue a stopped or paused run
     sr-review "question" --config my.yaml
+    sr-review --topic T3 --limit 100        # screen only the 100 best-ranked records
+                                            # (default: config screen_limit = 100; 0 = all)
+    sr-review --report-only 20261108-101500-a1b2c3   # rebuild report/ from the saved state
+                                                     # (code only, $0, no API key needed)
 
 Every run lives in ``runs/<run_id>/``: ``run.json`` (the arguments, so ``--resume`` rebuilds
 the same graph), ``checkpoints.sqlite`` (LangGraph state after every step: a crash or a
@@ -34,7 +38,8 @@ from .audit import AuditWriter, new_run_id
 from .config import Config, load_config
 from .evaluation.topics import load_topic
 from .graph import run_config
-from .pipeline import build_review_graph
+from .pipeline import agent_models, build_review_graph
+from .reporting import make_report
 
 Ask = Callable[[str], str]
 
@@ -146,10 +151,12 @@ def drive(graph, config: dict, first, audit: AuditWriter, ask: Ask, out=print) -
 
 
 def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
-        resume: str | None = None, ask: Ask = input, out=print, llm=None,
-        **inject) -> tuple[str, dict]:
-    """New run or ``resume``; returns (run_id, final state). ``llm`` / ``inject`` are for
-    tests (scripted LLM, fake search / full text / embedder)."""
+        resume: str | None = None, screen_limit: int | None = None, ask: Ask = input,
+        out=print, llm=None, **inject) -> tuple[str, dict]:
+    """New run or ``resume``; returns (run_id, final state). ``screen_limit``: records
+    screened at title/abstract (None = config; 0 = all), stored in run.json so a resume
+    uses the same. ``llm`` / ``inject`` are for tests (scripted LLM, fake search / full
+    text / embedder)."""
     if resume:
         run_id = resume
         run_dir = cfg.runs_dir / run_id
@@ -159,8 +166,11 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
         run_dir = cfg.runs_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         meta = {"run_id": run_id, "question": question, "topic": topic_id, "auto": auto,
+                "screen_limit": cfg.screen_limit if screen_limit is None else screen_limit,
+                "models": agent_models(cfg),
                 "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
         (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
+    cfg = cfg.model_copy(update={"screen_limit": meta.get("screen_limit", cfg.screen_limit)})
     topic = load_topic(meta["topic"]) if meta.get("topic") else None
     question = topic["question"] if topic else meta["question"]
 
@@ -194,6 +204,35 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
     return run_id, state
 
 
+def report_only(cfg: Config, run_id: str, out=print) -> dict:
+    """Part 9b: rebuild ``runs/<id>/report/`` from the run's saved ``state.json`` (code only,
+    no LLM call, $0), e.g. after a fix in the reporting code. The run's facts are kept:
+    models from run.json, finish time and embedding cost from the previous run summary.
+    Appends one audit entry. Returns the report's file map."""
+    run_dir = cfg.runs_dir / run_id
+    state_file = run_dir / "state.json"
+    if not state_file.exists():
+        raise FileNotFoundError(f"{run_dir} has no state.json: the run has not finished "
+                                f"(continue it with --resume {run_id})")
+    state = json.loads(state_file.read_text())
+    if not state.get("report"):
+        raise ValueError(f"run {run_id} ended before the report stage: nothing to re-render")
+    meta_file, prev_file = run_dir / "run.json", run_dir / "report" / "run_summary.json"
+    meta = json.loads(meta_file.read_text()) if meta_file.exists() else {}
+    prev = json.loads(prev_file.read_text()) if prev_file.exists() else None
+    update = make_report(run_dir / "report", models=meta.get("models") or agent_models(cfg),
+                         previous_summary=prev)(state)
+    rep = update["report"]
+    entry = {"node": "report", "event": "report re-rendered (--report-only)",
+             "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             "files": sorted(rep["files"]), "prisma_consistent": rep["prisma_consistent"]}
+    with (run_dir / "audit.jsonl").open("a") as f:
+        f.write(json.dumps(entry) + "\n")
+    out(f"Report of run {run_id} rebuilt in {rep['folder']} (PRISMA counts "
+        f"{'add up' if rep['prisma_consistent'] else 'do NOT add up: see the Results'})")
+    return rep["files"]
+
+
 def _final_message(run_id: str, state: dict, out=print) -> None:
     rep = state.get("report")
     if not rep:
@@ -222,10 +261,27 @@ def main(argv: list[str] | None = None) -> int:
                     help="never pause: approve the protocol, include unresolved conflicts")
     ap.add_argument("--config", type=Path, help="config YAML (default: config.yaml)")
     ap.add_argument("--resume", metavar="RUN_ID", help="continue a run from its checkpoint")
+    ap.add_argument("--limit", type=int, metavar="N",
+                    help="screen only the N best-ranked unique records (default: config "
+                         "screen_limit, 100; 0 = all); the rest are reported as not screened")
+    ap.add_argument("--report-only", metavar="RUN_ID",
+                    help="rebuild runs/RUN_ID/report/ from the saved state (no LLM call)")
     args = ap.parse_args(argv)
 
-    if args.resume and (args.question or args.topic or args.auto):
-        ap.error("--resume takes the question, topic and --auto of the original run")
+    if args.report_only:
+        if args.question or args.topic or args.auto or args.resume or args.limit is not None:
+            ap.error("--report-only takes only a run id (and --config)")
+        cfg = load_config(args.config)
+        try:
+            report_only(cfg, args.report_only)
+        except (FileNotFoundError, ValueError) as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        return 0
+    if args.limit is not None and args.limit < 0:
+        ap.error("--limit must be 0 (no limit) or more")
+    if args.resume and (args.question or args.topic or args.auto or args.limit is not None):
+        ap.error("--resume takes the question, topic, --auto and --limit of the original run")
     topic = None
     if args.topic:
         try:
@@ -247,7 +303,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         run_id, state = run(cfg, question=args.question, topic_id=args.topic,
-                            auto=args.auto, resume=args.resume)
+                            auto=args.auto, resume=args.resume, screen_limit=args.limit)
     except KeyboardInterrupt:
         print("\nStopped. Continue later with: sr-review --resume <run_id> "
               "(the last finished step is checkpointed)", file=sys.stderr)

@@ -16,7 +16,8 @@ Two places use a topic:
   (``criteria_source``), which the approval step shows; the human can still
   edit everything there.
 
-A criterion in ``topics.yaml`` is a string, or ``{text, stage, test}`` (Part 6c):
+A criterion in ``topics.yaml`` is a string, or ``{text, stage, test, label}`` (Part 6c;
+``label``: Part 9b, the short exclusion reason of the PRISMA diagram):
 ``stage: full_text`` = an abstract can never show it (checked only at full text);
 ``test`` = one positive sentence the screeners judge, while the review's wording
 stays the one displayed. ``load_topic`` flattens them into the text lists plus
@@ -42,7 +43,7 @@ def load_topic(topic_id: str, path: str | Path | None = None) -> dict:
     if topic_id not in topics:
         raise KeyError(f"unknown topic {topic_id!r} (known: {', '.join(topics)})")
     topic = {"id": topic_id, **topics[topic_id]}
-    full_text, tests = [], {}
+    full_text, tests, labels = [], {}, {}
     for key in ("inclusion_criteria", "exclusion_criteria"):
         texts = []
         for c in topic.get(key) or []:
@@ -56,9 +57,12 @@ def load_topic(topic_id: str, path: str | Path | None = None) -> dict:
                 raise ValueError(f"{topic_id}: stage must be 'any' or 'full_text': {c}")
             if c.get("test"):
                 tests[c["text"]] = c["test"]
+            if c.get("label"):
+                labels[c["text"]] = c["label"]
         if key in topic:
             topic[key] = texts
     topic["full_text_criteria"], topic["criterion_tests"] = full_text, tests
+    topic["criterion_labels"] = labels
     return topic
 
 
@@ -98,7 +102,9 @@ def seed_protocol(protocol: dict, topic: dict) -> tuple[dict, dict]:
         # The topic's criteria come with their own tags: the Planner's do not apply.
         out["full_text_criteria"] = list(topic.get("full_text_criteria") or [])
         out["criterion_tests"] = dict(topic.get("criterion_tests") or {})
-        fields += ["full_text_criteria", "criterion_tests"]
+        out["criterion_labels"] = [{"criterion": t, "label": lab} for t, lab in
+                                   (topic.get("criterion_labels") or {}).items()]
+        fields += ["full_text_criteria", "criterion_tests", "criterion_labels"]
     if topic.get("outcome_directions"):
         given = {str(k): str(v) for k, v in topic["outcome_directions"].items()}
         out["outcome_directions"] = [{"outcome": k, "better": v} for k, v in given.items()] + [

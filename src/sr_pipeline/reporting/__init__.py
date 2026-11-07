@@ -24,9 +24,11 @@ __all__ = ["make_report", "flow_counts", "run_summary"]
 
 
 def make_report(out_dir: str | Path, *, models: dict[str, str] | None = None,
-                embedder=None):
+                embedder=None, previous_summary: dict | None = None):
     """``models``: agent -> model, for the Methods. ``embedder``: the run's embedder, whose
-    cumulative ``usage()`` goes into the run summary (embeddings are not in the audit)."""
+    cumulative ``usage()`` goes into the run summary (embeddings are not in the audit).
+    ``previous_summary`` (Part 9b, ``--report-only``): the run summary of the original
+    report; its finish time and embedding cost are kept, so a re-render changes no fact."""
     out_dir = Path(out_dir)
 
     def report(state: dict) -> dict:
@@ -34,7 +36,8 @@ def make_report(out_dir: str | Path, *, models: dict[str, str] | None = None,
         out_dir.mkdir(parents=True, exist_ok=True)
         files: dict[str, str] = {}
 
-        png = flow_diagram(state.get("prisma_counts") or {}, out_dir / "prisma_flow.png")
+        png = flow_diagram(state.get("prisma_counts") or {}, out_dir / "prisma_flow.png",
+                           protocol=state.get("protocol"))
         files["prisma_flow.png"] = str(png)
         for name, path in write_tables(state, out_dir / "tables").items():
             files[f"tables/{name}"] = str(path)
@@ -48,7 +51,13 @@ def make_report(out_dir: str | Path, *, models: dict[str, str] | None = None,
 
         usage = embedder.usage() if embedder is not None and hasattr(embedder, "usage") \
             else None
+        if previous_summary:
+            usage = usage or previous_summary.get("embeddings") or None
         summary = run_summary(state, embeddings=usage)
+        if previous_summary:   # the run's own times, copied (not recomputed from rounded ones)
+            for key in ("finished_at", "seconds"):
+                if key in previous_summary:
+                    summary[key] = previous_summary[key]
         (out_dir / "run_summary.json").write_text(json.dumps(summary, indent=2, default=str))
         files["run_summary.json"] = str(out_dir / "run_summary.json")
 
@@ -58,7 +67,7 @@ def make_report(out_dir: str | Path, *, models: dict[str, str] | None = None,
         files["manuscript.md"] = str(out_dir / "manuscript.md")
         files["manuscript.docx"] = str(markdown_to_docx(md, out_dir / "manuscript.docx",
                                                         base=out_dir))
-        counts = flow_counts(state.get("prisma_counts") or {})
+        counts = flow_counts(state.get("prisma_counts") or {}, state.get("protocol"))
         return {
             "report": {"round": rnd, "folder": str(out_dir), "files": files,
                        "prisma_consistent": counts["consistent"]},

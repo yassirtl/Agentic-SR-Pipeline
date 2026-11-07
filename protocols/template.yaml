@@ -11,7 +11,8 @@
 # --- Scope ------------------------------------------------------------------
 databases: auto      # or a list, e.g. [openalex, pubmed, arxiv]
 years:
-  start: 2015        # first publication year (null = no limit)
+  recent: 5          # last 5 years: start = end year (or this year) - 5 (null = no limit)
+  start: null        # explicit first publication year (wins over recent)
   end: null          # last publication year (null = up to now)
   end_date: null     # optional exact last date, YYYY-MM-DD (e.g. a review's search date)
 languages: [English]

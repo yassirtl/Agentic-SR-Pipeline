@@ -61,6 +61,19 @@ class OutcomeDirection(BaseModel):
                     "depends on the instrument.")
 
 
+LABEL_MAX_WORDS = 5
+
+
+class CriterionLabel(BaseModel):
+    """Part 9b: a short reason for exclusion, shown in the PRISMA diagram and tables
+    ("not a primary RCT (D)", "comorbidities (E1)"). Display only: screeners never see it."""
+
+    criterion: str = Field(description="A criterion from the two lists, copied word for word.")
+    label: str = Field(description=f"At most {LABEL_MAX_WORDS} words: the reason a record "
+                       "is excluded on this criterion, e.g. 'not older adults', "
+                       "'comorbidities', 'no control group'.")
+
+
 class YearRange(BaseModel):
     start: int | None = Field(None, description="First publication year included (None = no limit).")
     end: int | None = Field(None, description="Last publication year included (None = no limit).")
@@ -68,6 +81,10 @@ class YearRange(BaseModel):
         None, description="Last publication date included (YYYY-MM-DD), when a year is not "
                           "precise enough, e.g. to match a published review's search date. "
                           "Sets ``end`` to its year.")
+    recent: int | None = Field(
+        None, ge=1, description="Part 9b: only the last N years. With no ``start``, start = "
+                                "end year (or this year) - N. An explicit ``start`` wins; "
+                                "null = no limit.")
 
     @model_validator(mode="after")
     def _ordered(self):
@@ -76,6 +93,8 @@ class YearRange(BaseModel):
                 raise ValueError(f"years.end ({self.end}) and years.end_date "
                                  f"({self.end_date}) disagree")
             self.end = self.end_date.year
+        if self.start is None and self.recent is not None:
+            self.start = (self.end or date.today().year) - self.recent
         if self.start is not None and self.end is not None and self.start > self.end:
             raise ValueError(f"years.start ({self.start}) is after years.end ({self.end})")
         return self
@@ -110,6 +129,9 @@ class ProtocolDraft(BaseModel):
     outcome_directions: list[OutcomeDirection] = Field(
         default_factory=list,
         description="One entry per outcome: whether lower or higher values are better.")
+    criterion_labels: list[CriterionLabel] = Field(
+        default_factory=list,
+        description="One entry per criterion: a short exclusion reason for the flow diagram.")
     rationale: str = Field(description="Two or three sentences on how the question was framed.")
 
 
@@ -164,6 +186,16 @@ class Protocol(ProtocolDraft):
                 seen.add(d.outcome)
                 kept.append(d)
         self.outcome_directions = kept
+        # Labels: keyed by criterion text, at most LABEL_MAX_WORDS words (else dropped: the
+        # diagram falls back to the criterion's first words).
+        seen, labels = set(), []
+        for lab in self.criterion_labels:
+            words = lab.label.split()
+            if lab.criterion in texts and lab.criterion not in seen and \
+                    0 < len(words) <= LABEL_MAX_WORDS:
+                seen.add(lab.criterion)
+                labels.append(CriterionLabel(criterion=lab.criterion, label=" ".join(words)))
+        self.criterion_labels = labels
         return self
 
 

@@ -66,6 +66,11 @@ from .extraction import included_papers, numbers, outcomes
 from .screening import _sum_usage
 
 MIN_POOL = 3
+# Part 9: a pooled result with I2 >= 75% is "not interpretable as a single effect" (Cochrane
+# Handbook 10.10). Part 9b fix 3: the narrative may then not describe the pooled size.
+I2_LIMIT = 0.75
+NOT_INTERPRETABLE = "not interpretable as a single effect"
+SIGN_ALPHA = 0.05
 DAGGER = "†"
 
 CONTROL_ARM = re.compile(
@@ -596,6 +601,60 @@ SWIM_RULES = (
 )
 
 
+# --- Part 9b fix 3: wording that the numbers do not allow ------------------------------------
+
+_SIZE = r"(?:negligible|trivial|small|modest|moderate|medium|large)"
+_EFFECT = r"(?:effects?|benefits?|improvements?|reductions?|differences?|SMD|estimates?|" \
+          r"changes?|magnitude|g)"
+# "negligible"/"trivial" alone are effect-size words; "small/moderate/large" also describe
+# samples and trials, so they count only next to an effect word (either order).
+SIZE_WORDING = re.compile(rf"\b(?:negligible|trivial)\b|\b{_SIZE}(?:\W+\w+){{0,3}}?\W+"
+                          rf"{_EFFECT}\b|\b{_EFFECT}(?:\W+\w+){{0,3}}?\W+{_SIZE}\b", re.I)
+# "no effect", "no clear effect", "no significant benefit", "ineffective"; "no evidence of
+# an effect" / "no evidence of a direction" are allowed (3 words in between).
+NO_EFFECT_WORDING = re.compile(r"\bno(?:\s+\w+){0,2}?\s+(?:effects?|benefits?|impact)\b|"
+                               r"\bineffective\b|\bnot effective\b", re.I)
+POOLED_WORDS = re.compile(r"pool|meta-analy|overall|combined|summary|\bSMD\b|standardi[sz]ed "
+                          r"mean difference", re.I)
+
+
+def wording_rule(g: dict) -> str | None:
+    """Which wording rule applies to an outcome group: 'high_i2' (pooled with I2 >= 75%),
+    'no_direction' (narrative, sign test not significant or not computable), else None."""
+    m = g.get("meta")
+    if m:
+        return "high_i2" if m["i2"] >= I2_LIMIT else None
+    p = (g.get("vote_count") or {}).get("sign_test_p")
+    return "no_direction" if p is None or p >= SIGN_ALPHA else None
+
+
+def wording_problems(g: dict, texts: list[dict]) -> list[dict]:
+    """Code check of the narrative against the numbers. ``texts``: sentences / heterogeneity
+    entries (``text``, ``studies``) of this outcome's section (and 'overall').
+    - high I2: an effect-size word about the pooled result (a sentence citing one study and
+      naming no pooled result may describe that study) and any 'no effect';
+    - narrative path, sign test not significant: 'no effect' (absence of evidence is not
+      evidence of no effect: write 'no evidence of a direction')."""
+    rule = wording_rule(g)
+    out = []
+    for t in texts:
+        found = NO_EFFECT_WORDING.search(t["text"])
+        if found:
+            out.append({"kind": "no_effect_wording", "text": t["text"], "words": found[0],
+                        "reason": (f"I2 {100 * g['meta']['i2']:.0f}%: the pooled result is "
+                                   f"{NOT_INTERPRETABLE}" if rule == "high_i2" else
+                                   "the sign test is not significant: write 'no evidence of "
+                                   "a direction', never 'no effect'")})
+            continue
+        found = SIZE_WORDING.search(t["text"]) if rule == "high_i2" else None
+        one_study = len(t.get("studies") or []) == 1 and not POOLED_WORDS.search(t["text"])
+        if found and not one_study:
+            out.append({"kind": "effect_size_wording", "text": t["text"], "words": found[0],
+                        "reason": f"I2 {100 * g['meta']['i2']:.0f}%: the pooled result is "
+                                  f"{NOT_INTERPRETABLE}; do not describe its size"})
+    return out if rule else []
+
+
 def required_items(groups: list[dict]) -> list[str]:
     """Items code will check in this draft, spelled out per outcome and study (seen live:
     gpt-4o-mini skipped the general METRIC CONFLICT rule in 3 rounds out of 3)."""
@@ -609,6 +668,14 @@ def required_items(groups: list[dict]) -> list[str]:
             if p.get("metric_conflict"):
                 items.append(f"a sentence in section {g['id']} with studies ['{p['label']}'] "
                              f"saying its direction depends on the metric: {p['conflict']}")
+        rule = wording_rule(g)
+        if rule == "high_i2":
+            items.append(f"in {g['id']}: I2 {100 * m['i2']:.0f}% >= 75%, so the pooled SMD is "
+                         f"{NOT_INTERPRETABLE}: do not describe its size (no 'negligible', "
+                         "'small', 'moderate', 'large', 'no effect'); describe the studies")
+        elif rule == "no_direction":
+            items.append(f"in {g['id']}: the sign test is not significant: write 'no evidence "
+                         "of a direction', never 'no effect'")
     return items
 
 

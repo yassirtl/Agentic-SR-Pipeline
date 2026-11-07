@@ -180,6 +180,29 @@ def criteria(protocol: dict) -> list[tuple[str, str]]:
     return out
 
 
+# Part 9b: short exclusion reasons for the PRISMA diagram and tables (display only).
+DESIGN_SHORT = {"randomized controlled trial": "RCT", "randomised controlled trial": "RCT"}
+OTHER_REASONS = {"human": "excluded by a human", "auto": "excluded automatically"}
+
+
+def criterion_labels(protocol: dict) -> dict[str, str]:
+    """Criterion id -> short label (at most 5 words). D from the designs; I/E from the
+    protocol's ``criterion_labels`` (topics.yaml or the Planner), else the criterion's first
+    5 words. Also the non-criterion reasons ('human')."""
+    designs = protocol.get("study_designs") or []
+    if len(designs) == 1:
+        d = designs[0].strip()
+        labels = {"D": f"not a primary {DESIGN_SHORT.get(d.lower(), d)}"}
+    else:
+        labels = {"D": "not an eligible primary study" if designs else "not a primary study"}
+    given = {x["criterion"]: x["label"] for x in protocol.get("criterion_labels") or []}
+    for cid, text in criteria(protocol)[1:]:
+        words = text.split()
+        labels[cid] = given.get(text) or " ".join(words[:5]) + ("..." if len(words) > 5
+                                                                 else "")
+    return {**labels, **OTHER_REASONS}
+
+
 def deferred_at_ta(protocol: dict) -> set[str]:
     """IDs of the criteria an abstract can never show (checked only at full text)."""
     full_text = set(protocol.get("full_text_criteria") or [])
@@ -754,22 +777,45 @@ def _included(decisions: list[dict]) -> list[str]:
 
 # --- Title / abstract stage -------------------------------------------------------------
 
+LIMIT_KEYS = ("screen_limit", "records_available", "not_screened")
+
+
+def screening_sample(papers: list[dict], limit: int | None) -> list[dict]:
+    """Part 9b: the ``limit`` best-ranked papers (``rank`` = best position in any database's
+    relevance order, so every database contributes its top hits; ties and papers without a
+    rank keep the retrieval order). ``None`` / 0 = every paper. Retrieval order is kept."""
+    if not limit or limit >= len(papers):
+        return list(papers)
+    order = sorted(range(len(papers)),
+                   key=lambda i: (papers[i].get("rank") or float("inf"), i))
+    keep = set(order[:limit])
+    return [p for i, p in enumerate(papers) if i in keep]
+
+
+def limit_counts(n_available: int, n_screened: int, limit: int | None) -> dict:
+    """PRISMA keys of the limit: the papers above it are 'not screened (limit N)'."""
+    return {"screen_limit": limit or None, "records_available": n_available,
+            "not_screened": n_available - n_screened}
+
+
 def make_ta_screening(llm: LLM, *, workers: int = 8, limit: int | None = None):
-    """Title/abstract screening of ``unique_records``. ``limit`` screens only the first
-    N records (development runs; never in a real review)."""
+    """Title/abstract screening of ``unique_records``. ``limit`` (Part 9b, config
+    ``screen_limit``, ``sr-review --limit``) screens only the ``limit`` best-ranked records;
+    the others are counted as not screened, so the PRISMA diagram stays honest."""
 
     def ta_screening(state: ReviewState) -> dict:
         protocol = state["protocol"]
         rnd = stage_round("ta_screening", state.get("completed_stages", []))
-        papers = state.get("unique_records", [])[:limit] if limit else state.get(
-            "unique_records", [])
+        available = state.get("unique_records", [])
+        papers = screening_sample(available, limit)
 
         def one(paper):
             return screen_record(llm, protocol, paper, ta_evidence(paper), stage="ta", rnd=rnd)
 
         results = _parallel(one, papers, workers)
         decisions = [item for item, _ in results]
-        counts = _counts("ta", decisions, rnd)
+        counts = {**_counts("ta", decisions, rnd),
+                  **limit_counts(len(available), len(papers), limit)}
         return {
             "ta_decisions": decisions,
             "prisma_counts": {**state.get("prisma_counts", {}), "title_abstract": counts},
@@ -950,10 +996,12 @@ def make_conflict_review(stage: Literal["ta", "ft"], *, human: bool):
             new.append(item)
         papers = state.get("unique_records", [])
         decisions = current_decisions(state.get(field, []) + new, papers, rnd)
+        prev = state.get("prisma_counts", {}).get(PRISMA_KEY[stage]) or {}
+        kept = {k: prev[k] for k in LIMIT_KEYS if k in prev}   # the screening limit's counts
         update = {
             field: new,
             "prisma_counts": {**state.get("prisma_counts", {}),
-                              PRISMA_KEY[stage]: _counts(stage, decisions, rnd)},
+                              PRISMA_KEY[stage]: {**_counts(stage, decisions, rnd), **kept}},
             "audit_log": [{"node": node_name, "step": state.get("steps_taken", 0),
                            "round": rnd, "event": "screening conflicts resolved",
                            "resolved_by": by, "attempts": asked,
@@ -974,7 +1022,9 @@ def describe_screening(state: ReviewState) -> list[str]:
     if (ta := pc.get("title_abstract")):
         out.append(f"Title/abstract screening (round {ta['round']}): {ta['records_screened']} "
                    f"screened, {ta['included']} included, {ta['records_excluded']} excluded, "
-                   f"kappa {ta['kappa']}")
+                   f"kappa {ta['kappa']}"
+                   + (f"; {ta['not_screened']} records above the screening limit of "
+                      f"{ta['screen_limit']} not screened" if ta.get("not_screened") else ""))
     if (ft := pc.get("full_text")):
         out.append(f"Full-text screening (round {ft['round']}): {ft['reports_sought']} sought, "
                    f"{ft['reports_not_retrieved']} without full text, "

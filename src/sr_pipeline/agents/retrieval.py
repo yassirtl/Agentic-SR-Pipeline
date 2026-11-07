@@ -51,8 +51,10 @@ def make_retrieval(http: HttpClient | None, *, max_records: int = 3000,
 
         results, errors = search(strategy, http, max_records=cap,
                                  contact_email=contact_email, env=env)
-        records = [{**rec.model_dump(mode="json"), "round": rnd}
-                   for res in results.values() for rec in res.records]
+        # rank = position in the database's own relevance order (Part 9b: the screening
+        # limit takes the best-ranked papers of every database, not the first database).
+        records = [{**rec.model_dump(mode="json"), "round": rnd, "rank": i}
+                   for res in results.values() for i, rec in enumerate(res.records, 1)]
         dd = deduplicate(records)
         papers = [{**p, "round": rnd} for p in dd["papers"]]
 

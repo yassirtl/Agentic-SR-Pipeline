@@ -18,16 +18,13 @@ from pathlib import Path
 
 from ..agents.extraction import outcomes
 from ..agents.screening import criteria
-from ..agents.synthesis import DAGGER, MIN_POOL
+from ..agents.synthesis import DAGGER, I2_LIMIT, MIN_POOL, NOT_INTERPRETABLE
 from ..agents.critic import MAX_LOOPS
 from ..meta import expit, prediction_interval
 from ..protocol import metric_order
 from .prisma import flow_counts
 from .summary import summary_markdown
 from .tables import rob_rows, study_rows
-
-I2_LIMIT = 0.75
-NOT_INTERPRETABLE = "not interpretable as a single effect"
 
 # Screening tuning log (docs/PLAN.md, "Screening freeze"): every change was made while
 # looking at the T3 development sample (first 50 records of runs/20261107-160209-aec820).
@@ -147,7 +144,9 @@ def _methods(state: dict, models: dict[str, str]) -> list[str]:
                      {"k": "Outcomes", "v": "; ".join(pico.get("outcomes") or [])}],
                     [("k", "PICO"), ("v", "")]), "",
            f"Study designs: {', '.join(p.get('study_designs') or []) or 'no restriction'}. "
-           f"Years: {years.get('start') or 'any'} to {years.get('end_date') or years.get('end') or 'any'}. "
+           f"Years: {years.get('start') or 'any'} to {years.get('end_date') or years.get('end') or 'any'}"
+           + (f" (last {years['recent']} years, the template default)" if years.get("recent")
+              else "") + ". "
            f"Languages: {', '.join(p.get('languages') or []) or 'any'}. "
            f"Criteria source: {p.get('criteria_source') or 'Planner (LLM draft), approved'}.",
            ""]
@@ -183,9 +182,21 @@ def _methods(state: dict, models: dict[str, str]) -> list[str]:
                             [("a", "Attempt"), ("c", "Hits"), ("s", "Status"),
                              ("r", "Reason")]))
 
+    ta = (state.get("prisma_counts") or {}).get("title_abstract") or {}
+    limit = ta.get("screen_limit")
     out += ["", "### Selection process", "",
             "Records were deduplicated by code (record id, DOI, PMID, PMCID, then fuzzy title "
-            "match with guards). Two LLM screeners (A strict, B lenient) judged every record "
+            "match with guards). "
+            + (f"Only the {limit} best-ranked unique records were screened (screening "
+               "limit; rank = best position in any database's relevance order, so every "
+               f"database contributes its top hits); the other {ta.get('not_screened', 0)} "
+               "are reported in the flow diagram as not screened. " if limit else "")
+            + "Automation tool (PRISMA 2020 'records marked as ineligible by automation "
+            "tools'): before any LLM call, a code rule excludes on the design criterion D a "
+            "record whose title names its own type as a review, meta-analysis, protocol, "
+            "editorial or commentary (at the start of the title or after a colon or dash, "
+            "e.g. '...: a systematic review'); these records are counted before screening, "
+            "not as screening exclusions. Two LLM screeners (A strict, B lenient) judged every record "
             "criterion by criterion, each failure backed by a quote that code verifies in "
             "the text; disagreements went to an LLM adjudicator, unresolved records to a "
             "human (or were included with `--auto`). Full texts (open access only: PMC XML, "
@@ -240,17 +251,24 @@ def _methods(state: dict, models: dict[str, str]) -> list[str]:
 def _results(state: dict, base: Path, prisma_png: Path | None) -> list[str]:
     syn = state.get("synthesis") or {}
     pc = state.get("prisma_counts") or {}
-    c = flow_counts(pc)
+    c = flow_counts(pc, state.get("protocol"))
+    n = c["numbers"]
     ta, ft = pc.get("title_abstract") or {}, pc.get("full_text") or {}
     out = ["## Results", "", "### Study selection", ""]
-    out.append(f"{c['identification']['n']} records were identified, "
-               f"{c['removed']['lines'][1].strip()} and "
-               f"{c['removed']['lines'][2].split(';')[0].strip()}) were removed before "
-               f"screening, {c['screened']['n']} records were screened on title and "
-               f"abstract and {c['ta_excluded']['n']} excluded. {c['sought']['n']} reports "
-               f"were sought; {c['not_retrieved']['n']} had no open-access full text and "
-               f"were assessed on the abstract. {c['ft_excluded']['n']} were excluded and "
-               f"**{c['included']['n']} studies were included**. Screener agreement: "
+    removed = [f"{n['duplicates']} duplicates",
+               f"{n['automation']} records marked as ineligible by the title rule "
+               "(automation tool)",
+               f"{n['not_downloaded']} records not downloaded (search ceiling)"]
+    if n["screen_limit"] or n["not_screened"]:
+        removed.append(f"{n['not_screened']} records above the screening limit of "
+                       f"{n['screen_limit']} (not screened)")
+    out.append(f"{n['identified']} records were identified; "
+               f"{', '.join(removed[:-1])} and {removed[-1]} were removed before "
+               f"screening. {n['screened']} records were screened on title and "
+               f"abstract and {n['ta_excluded']} excluded. {n['sought']} reports "
+               f"were sought; {n['not_retrieved']} had no open-access full text and "
+               f"were assessed on the abstract. {n['ft_excluded']} were excluded and "
+               f"**{n['included']} studies were included**. Screener agreement: "
                f"title/abstract kappa {ta.get('kappa', 'n/a')}, full text kappa "
                f"{ft.get('kappa', 'n/a')}.")
     if not c["consistent"]:
@@ -348,6 +366,11 @@ def _limitations(state: dict) -> list[str]:
            f"- Databases searched: {', '.join(p.get('databases') or [])} only (free "
            "sources); reviews that also search Embase, Cochrane or Scopus may find studies "
            "these do not index."]
+    ta = (state.get("prisma_counts") or {}).get("title_abstract") or {}
+    if ta.get("not_screened"):
+        out.append(f"- Screening limit: only the {ta['screen_limit']} best-ranked of "
+                   f"{ta['records_available']} unique records were screened; relevant "
+                   f"studies among the other {ta['not_screened']} were not considered.")
     if abstract:
         out.append(f"- {len(abstract)} of {len(studies)} included studies had no open-access "
                    f"full text and were screened and extracted from the abstract only "
@@ -397,7 +420,7 @@ def manuscript(state: dict, *, base: Path, models: dict[str, str], summary: dict
     p = state.get("protocol") or {}
     syn = state.get("synthesis") or {}
     pc = state.get("prisma_counts") or {}
-    c = flow_counts(pc)
+    c = flow_counts(pc, p)
     methods = "; ".join(f"{g['id']} {g['method']}" for g in syn.get("outcomes", []))
     main = next((g for g in syn.get("outcomes", []) if g.get("meta")), None)
     qa = state.get("qa_report") or {}

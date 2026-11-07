@@ -45,7 +45,8 @@ def test_topic_seeds_question_criteria_dates_and_designs():
     assert "Healthy older adults aged over 60 years" in p["inclusion_criteria"]
     assert p["exclusion_criteria"] == t3["exclusion_criteria"]
     assert p["study_designs"] == ["randomized controlled trial"]
-    assert p["years"] == {"start": None, "end": 2024, "end_date": "2024-01-07"}  # not 2015
+    assert p["years"] == {"start": None, "end": 2024, "end_date": "2024-01-07",
+                          "recent": None}  # the topic replaces the template's last-5-years
     assert p["languages"] == ["English", "Chinese"]
     assert p["topic"] == "T3" and p["criteria_source"].startswith("topics.yaml T3 (review Li")
     entry = update["audit_log"][0]
@@ -72,7 +73,7 @@ def test_topic_template_scope():
     assert tpl.years.start is None and tpl.years.end_date == date(2024, 1, 7)
     assert tpl.study_designs == ["randomized controlled trial"]
     assert "Inclusion criteria required by the user" in build_prompt("q", tpl)
-    assert TEMPLATE.years.start == 2015  # the base template is not modified
+    assert TEMPLATE.years.recent == 5  # the base template is not modified
 
 
 def test_approval_shows_seeded_protocol_and_edits_are_traced():

@@ -47,7 +47,8 @@ def build_stages(cfg: Config, llm: LLM, run_dir: str | Path, *, topic: dict | No
             max_refinements=cfg.max_refinements, **common),
         "retrieval": make_retrieval(http, max_records=cfg.max_records, search=search,
                                     **common),
-        "ta_screening": make_ta_screening(llm, workers=cfg.screening_workers),
+        "ta_screening": make_ta_screening(llm, workers=cfg.screening_workers,
+                                          limit=cfg.screen_limit or None),
         "ft_screening": make_ft_screening(
             llm, http, embedder, index_dir=index, workers=cfg.screening_workers,
             passages=cfg.ft_passages, candidates=cfg.ft_candidates,

@@ -150,6 +150,9 @@ def _merge(group: list[dict]) -> dict:
         or first("oa_pdf_url"),
         "sources": sorted({r["source"] for r in group}, key=lambda s: SOURCE_PRIORITY.get(s, 9)),
         "record_ids": [r["id"] for r in group],
+        # Part 9b: best position in any database's relevance order (1 = top hit), for the
+        # screening limit; None when the records carry no rank.
+        "rank": min((r["rank"] for r in group if r.get("rank")), default=None),
     }
     if paper["doi"]:
         pid = f"doi:{paper['doi']}"
