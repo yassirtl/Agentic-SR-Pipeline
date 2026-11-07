@@ -176,7 +176,7 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 | 1 Architecture + strategy deck | done | 2026-11-07 |
 | 2 Skeleton | done | 2026-11-07 · 7 tests green; LLM disk cache + token cost (§3.4) done in 2b |
 | 2b Skeleton fixes (cache + cost, latest decision, coordinator fallback) | done | 2026-11-07 · 15 tests green; usage via `call_with_usage()`; stages must tag items with `stage_round()` and read via `latest()` |
-| 3 Config + Planner | done | 2026-11-07 · 27 tests green; `config.yaml` + env (`SR_*`), paths absolute under project root (cache fix from 2b); `protocol.py` (LLM drafts PICO/criteria, template fixes databases/years/languages); approval is a separate non-stage node (`build_graph(approve_protocol=True)`), resume with `True` or `{"edits": {...}}`; `AuditWriter.sync()` writes only new entries |
+| 3 Config + Planner | done | 2026-11-07 · 27 tests green; `config.yaml` + env (`SR_*`), paths absolute under project root (cache fix from 2b); `protocol.py` (LLM drafts PICO/criteria, template fixes databases/years/languages); approval is a separate non-stage node (`build_graph(approve_protocol=True)`), resume with `True` or `{"edits": {...}}`; `AuditWriter.sync()` writes only new entries; Colab run skipped (tests only) |
 | 4 Search + sources | next | |
 | 5 Retrieval + RAG | todo | |
 | 6 Screening | todo | |
