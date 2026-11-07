@@ -1,22 +1,27 @@
-"""Run configuration: defaults in code < config.yaml < environment variables.
+"""Run configuration: defaults in code < config.yaml < .env < environment variables.
 
-Secrets never go in the YAML: ChatOpenAI reads ``OPENAI_API_KEY`` from the
-environment itself (Colab Secrets / getpass in the notebook).
+Secrets never go in the YAML. They live in the git-ignored ``.env`` file at the
+project root (``OPENAI_API_KEY=...``), which ``load_config`` loads into the
+environment; a variable already set in the shell wins over ``.env``. ChatOpenAI
+then reads ``OPENAI_API_KEY`` from the environment itself.
 
-Paths (LLM cache, runs, protocol template) are resolved to absolute paths under
-the project root, so a run started from any working directory (a notebook in a
-sub-folder, Colab's /content) finds the same cache.
+Paths (LLM cache, HTTP cache, runs, protocol template) are resolved to absolute
+paths under the project root, so a run started from any working directory finds
+the same caches.
 
 Environment overrides:
-  SR_PROJECT_ROOT, SR_CACHE_DIR, SR_RUNS_DIR, SR_PROTOCOL_TEMPLATE,
-  SR_DEFAULT_MODEL, SR_MAX_RECORDS, SR_MAX_STEPS,
-  SR_MODEL_<AGENT> (e.g. SR_MODEL_EXTRACTION=gpt-4o).
+  SR_PROJECT_ROOT, SR_CACHE_DIR, SR_HTTP_CACHE_DIR, SR_RUNS_DIR,
+  SR_PROTOCOL_TEMPLATE, SR_DEFAULT_MODEL, SR_MAX_RECORDS, SR_MAX_STEPS,
+  SR_CONTACT_EMAIL, SR_MODEL_<AGENT> (e.g. SR_MODEL_EXTRACTION=gpt-4o).
+Optional database keys (read from the environment, never stored in the config):
+  NCBI_API_KEY (PubMed: 10 requests/s instead of 3), OPENALEX_API_KEY.
 """
 
 import os
 from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 CONFIG_FILE = "config.yaml"
@@ -26,9 +31,9 @@ def find_project_root() -> Path:
     """Folder that holds pyproject.toml.
 
     ``SR_PROJECT_ROOT`` wins. Otherwise the package source tree is used: with an
-    editable install (``pip install -e .``, what we do locally and in Colab) this
-    file lives in <root>/src/sr_pipeline/. If that fails (non-editable install),
-    fall back to the current working directory.
+    editable install (``pip install -e .``) this file lives in
+    <root>/src/sr_pipeline/. If that fails (non-editable install), fall back to
+    the current working directory.
     """
     env = os.environ.get("SR_PROJECT_ROOT")
     if env:
@@ -45,16 +50,19 @@ class Config(BaseModel):
                                    description="Per-agent model, e.g. {'extraction': 'gpt-4o'}.")
     max_records: int = Field(500, ge=1, description="Cap on records fetched per database.")
     max_steps: int = Field(40, ge=1, description="Coordinator step budget.")
+    contact_email: str | None = Field(
+        None, description="Sent to OpenAlex (mailto) and NCBI (email) as a polite contact.")
 
     project_root: Path = Field(default_factory=find_project_root)
     cache_dir: Path = Path(".cache/llm")
+    http_cache_dir: Path = Path(".cache/http")
     runs_dir: Path = Path("runs")
     protocol_template: Path = Path("protocols/template.yaml")
 
     def model_post_init(self, _ctx) -> None:
         root = self.project_root.expanduser().resolve()
         self.project_root = root
-        for name in ("cache_dir", "runs_dir", "protocol_template"):
+        for name in ("cache_dir", "http_cache_dir", "runs_dir", "protocol_template"):
             p = getattr(self, name).expanduser()
             setattr(self, name, p if p.is_absolute() else root / p)
 
@@ -68,15 +76,23 @@ class Config(BaseModel):
         return OpenAILLM(models=self.models, default=self.default_model,
                          cache_dir=self.cache_dir, **kwargs)
 
+    def make_http(self, **kwargs):
+        """HTTP client for the database connectors (disk cache under http_cache_dir)."""
+        from .sources.http import HttpClient
+
+        return HttpClient(cache_dir=self.http_cache_dir, **kwargs)
+
 
 _ENV_FIELDS = {
     "SR_PROJECT_ROOT": "project_root",
     "SR_CACHE_DIR": "cache_dir",
+    "SR_HTTP_CACHE_DIR": "http_cache_dir",
     "SR_RUNS_DIR": "runs_dir",
     "SR_PROTOCOL_TEMPLATE": "protocol_template",
     "SR_DEFAULT_MODEL": "default_model",
     "SR_MAX_RECORDS": "max_records",
     "SR_MAX_STEPS": "max_steps",
+    "SR_CONTACT_EMAIL": "contact_email",
 }
 
 
@@ -90,8 +106,15 @@ def _env_overrides(env: dict[str, str]) -> dict:
 
 
 def load_config(path: str | Path | None = None, env: dict[str, str] | None = None) -> Config:
-    """Build the config. ``path`` defaults to <project root>/config.yaml (optional file)."""
-    env = dict(os.environ) if env is None else env
+    """Build the config. ``path`` defaults to <project root>/config.yaml (optional file).
+
+    With ``env=None`` the real environment is used, after loading
+    <project root>/.env into it (shell variables are not overwritten). Tests pass
+    ``env`` explicitly, so they never read the real ``.env``.
+    """
+    if env is None:
+        load_dotenv(find_project_root() / ".env", override=False)
+        env = dict(os.environ)
     data: dict = {}
 
     if path is None:

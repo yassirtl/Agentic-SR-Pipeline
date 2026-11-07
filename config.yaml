@@ -1,5 +1,6 @@
 # Run configuration. Environment variables override these values (see src/sr_pipeline/config.py).
-# Never put the API key here: set OPENAI_API_KEY in the environment (Colab Secrets).
+# Never put API keys here: put them in the git-ignored .env file at the project root
+# (OPENAI_API_KEY=..., optional NCBI_API_KEY=..., OPENALEX_API_KEY=...).
 
 default_model: gpt-4o-mini
 models:              # per-agent model; agents not listed use default_model
@@ -11,7 +12,12 @@ models:              # per-agent model; agents not listed use default_model
 max_records: 500     # per database
 max_steps: 40        # coordinator step budget
 
+# Optional: an e-mail sent to OpenAlex (polite pool) and NCBI so they can contact
+# you instead of blocking you. Better set it in .env as SR_CONTACT_EMAIL.
+contact_email: null
+
 # Relative paths are resolved under the project root.
 cache_dir: .cache/llm
+http_cache_dir: .cache/http   # recorded database answers (searches are re-run from here)
 runs_dir: runs
 protocol_template: protocols/template.yaml

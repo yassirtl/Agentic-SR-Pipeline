@@ -1,0 +1,67 @@
+{
+ "concepts": [
+  {
+   "name": "population",
+   "keywords": [
+    "older adults",
+    "elderly",
+    "aged"
+   ],
+   "mesh_terms": [
+    "Aged"
+   ]
+  },
+  {
+   "name": "intervention",
+   "keywords": [
+    "exercise",
+    "physical activity"
+   ],
+   "mesh_terms": [
+    "Exercise"
+   ]
+  },
+  {
+   "name": "outcome",
+   "keywords": [
+    "depression",
+    "depressive symptoms"
+   ],
+   "mesh_terms": [
+    "Depression"
+   ]
+  }
+ ],
+ "years": {
+  "start": 2015,
+  "end": 2025
+ },
+ "query": "(ti:\"older adults\" OR abs:\"older adults\" OR ti:elderly OR abs:elderly OR ti:aged OR abs:aged) AND (ti:exercise OR abs:exercise OR ti:\"physical activity\" OR abs:\"physical activity\") AND (ti:depression OR abs:depression OR ti:\"depressive symptoms\" OR abs:\"depressive symptoms\")",
+ "max_records": 3,
+ "exchanges": [
+  {
+   "url": "https://export.arxiv.org/api/query",
+   "params": {
+    "search_query": "((ti:\"older adults\" OR abs:\"older adults\" OR ti:elderly OR abs:elderly OR ti:aged OR abs:aged) AND (ti:exercise OR abs:exercise OR ti:\"physical activity\" OR abs:\"physical activity\") AND (ti:depression OR abs:depression OR ti:\"depressive symptoms\" OR abs:\"depressive symptoms\")) AND submittedDate:[201501010000 TO 202512312359]",
+    "start": "0",
+    "max_results": "2",
+    "sortBy": "relevance",
+    "sortOrder": "descending"
+   },
+   "status": 200,
+   "body": "<?xml version='1.0' encoding='UTF-8'?>\n<feed xmlns:opensearch=\"http://a9.com/-/spec/opensearch/1.1/\" xmlns:arxiv=\"http://arxiv.org/schemas/atom\" xmlns=\"http://www.w3.org/2005/Atom\">\n  <id>https://arxiv.org/api/8vdN/gmfecdRWy59IZ1g8cacsgc</id>\n  <title>arXiv Query: search_query=( (ti:\"older adults\" OR abs:\"older adults\" OR ti:elderly OR abs:elderly OR ti:aged OR abs:aged) AND (ti:exercise OR abs:exercise OR ti:\"physical activity\" OR abs:\"physical activity\") AND (ti:depression OR abs:depression OR ti:\"depressive symptoms\" OR abs:\"depressive symptoms\") ) AND submittedDate:\"201501010000 TO 202512312359\"&amp;id_list=&amp;start=0&amp;max_results=2</title>\n  <updated>2026-11-07T14:41:01Z</updated>\n  <link href=\"https://arxiv.org/api/query?search_query=((ti:%22older+adults%22+OR+(abs:%22older+adults%22+OR+(ti:elderly+OR+(abs:elderly+OR+(ti:aged+OR+abs:aged)))))+AND+((ti:exercise+OR+(abs:exercise+OR+(ti:%22physical+activity%22+OR+abs:%22physical+activity%22)))+AND+(ti:depression+OR+(abs:depression+OR+(ti:%22depressive+symptoms%22+OR+abs:%22depressive+symptoms%22)))))+AND+submittedDate:%22201501010000+TO+202512312359%22&amp;start=0&amp;max_results=2&amp;id_list=\" type=\"application/atom+xml\"/>\n  <opensearch:itemsPerPage>2</opensearch:itemsPerPage>\n  <opensearch:totalResults>8</opensearch:totalResults>\n  <opensearch:startIndex>0</opensearch:startIndex>\n  <entry>\n    <id>http://arxiv.org/abs/1912.02359v1</id>\n    <title>The Autoregressive Structural Model for analyzing longitudinal health data of an aging population in China</title>\n    <updated>2019-12-05T03:12:57Z</updated>\n    <link href=\"https://arxiv.org/abs/1912.02359v1\" rel=\"alternate\" type=\"text/html\"/>\n    <link href=\"https://arxiv.org/pdf/1912.02359v1\" rel=\"related\" type=\"application/pdf\" title=\"pdf\"/>\n    <summary>We seek to elucidate the impact of social activity, physical activity and functional health status (factors) on depressive symptoms (outcome) in the China Health and Retirement Longitudinal Study (CHARLS), a multi-year study of aging involving 20,000 participants 45 years of age and older. Although a variety of statistical methods are available for analyzing longitudinal data, modeling the dynamics within a complex system remains a difficult methodological challenge. We develop an Autoregressive Structural Model (ASM) to examine these factors on depressive symptoms while accounting for temporal dependence. The ASM builds on the structural equation model and also consists of two components: a measurement model that connects observations to latent factors, and a structural model that delineates the mechanism among latent factors. Our ASM further incorporates autoregressive dependence into both components for repeated measurements. The results from applying the ASM to the CHARLS data indicate that social and physical activity independently and consistently mitigated depressive symptoms over the course of five years, by mediating through functional health status.</summary>\n    <category term=\"stat.AP\" scheme=\"http://arxiv.org/schemas/atom\"/>\n    <published>2019-12-05T03:12:57Z</published>\n    <arxiv:comment>20 pages, 3 figures</arxiv:comment>\n    <arxiv:primary_category term=\"stat.AP\"/>\n    <author>\n      <name>Yazhuo Deng</name>\n    </author>\n    <author>\n      <name>David R. Paul</name>\n    </author>\n    <author>\n      <name>Audrey Q. Fu</name>\n    </author>\n  </entry>\n  <entry>\n    <id>http://arxiv.org/abs/2404.11212v1</id>\n    <title>Deciphering seasonal depression variations and interplays between weather changes, physical activity, and depression severity in real-world settings: Learnings from RADAR-MDD longitudinal mobile health study</title>\n    <updated>2024-04-17T09:53:03Z</updated>\n    <link href=\"https://arxiv.org/abs/2404.11212v1\" rel=\"alternate\" type=\"text/html\"/>\n    <link href=\"https://arxiv.org/pdf/2404.11212v1\" rel=\"related\" type=\"application/pdf\" title=\"pdf\"/>\n    <summary>Prior research has shown that changes in seasons and weather can have a significant impact on depression severity. However, findings are inconsistent across populations, and the interplay between weather, behavior, and depression has not been fully quantified. This study analyzed real-world data from 428 participants (a subset; 68.7% of the cohort) in the RADAR-MDD longitudinal mobile health study to investigate seasonal variations in depression (measured through a remote validated assessment - PHQ-8) and examine the potential interplay between dynamic weather changes, physical activity (monitored via wearables), and depression severity. The clustering of PHQ-8 scores identified four distinct seasonal variations in depression severity: one stable trend and three varying patterns where depression peaks in different seasons. Among these patterns, participants within the stable trend had the oldest average age (p=0.002) and the lowest baseline PHQ-8 score (p=0.003). Mediation analysis assessing the indirect effect of weather on physical activity and depression showed significant differences among participants with different affective responses to weather. These findings illustrate the heterogeneity in individuals' seasonal depression variations and responses to weather, underscoring the necessity for personalized approaches to help understand the impact of environmental factors on the real-world effectiveness of behavioral treatments.</summary>\n    <category term=\"stat.AP\" scheme=\"http://arxiv.org/schemas/atom\"/>\n    <published>2024-04-17T09:53:03Z</published>\n    <arxiv:primary_category term=\"stat.AP\"/>\n    <author>\n      <name>Yuezhou Zhang</name>\n    </author>\n    <author>\n      <name>Amos A. Folarin</name>\n    </author>\n    <author>\n      <name>Yatharth Ranjan</name>\n    </author>\n    <author>\n      <name>Nicholas Cummins</name>\n    </author>\n    <author>\n      <name>Zulqarnain Rashid</name>\n    </author>\n    <author>\n      <name>Pauline Conde</name>\n    </author>\n    <author>\n      <name>Callum Stewart</name>\n    </author>\n    <author>\n      <name>Shaoxiong Sun</name>\n    </author>\n    <author>\n      <name>Srinivasan Vairavan</name>\n    </author>\n    <author>\n      <name>Faith Matcham</name>\n    </author>\n    <author>\n      <name>Carolin Oetzmann</name>\n    </author>\n    <author>\n      <name>Sara Siddi</name>\n    </author>\n    <author>\n      <name>Femke Lamers</name>\n    </author>\n    <author>\n      <name>Sara Simblett</name>\n    </author>\n    <author>\n      <name>Til Wykes</name>\n    </author>\n    <author>\n      <name>David C. Mohr</name>\n    </author>\n    <author>\n      <name>Josep Maria Haro</name>\n    </author>\n    <author>\n      <name>Brenda W. J. H. Penninx</name>\n    </author>\n    <author>\n      <name>Vaibhav A. Narayan</name>\n    </author>\n    <author>\n      <name>Matthew Hotopf</name>\n    </author>\n    <author>\n      <name>Richard J. B. Dobson</name>\n    </author>\n    <author>\n      <name>Abhishek Pratap</name>\n    </author>\n    <author>\n      <name>RADAR-CNS consortium</name>\n    </author>\n  </entry>\n</feed>\n"
+  },
+  {
+   "url": "https://export.arxiv.org/api/query",
+   "params": {
+    "search_query": "((ti:\"older adults\" OR abs:\"older adults\" OR ti:elderly OR abs:elderly OR ti:aged OR abs:aged) AND (ti:exercise OR abs:exercise OR ti:\"physical activity\" OR abs:\"physical activity\") AND (ti:depression OR abs:depression OR ti:\"depressive symptoms\" OR abs:\"depressive symptoms\")) AND submittedDate:[201501010000 TO 202512312359]",
+    "start": "2",
+    "max_results": "1",
+    "sortBy": "relevance",
+    "sortOrder": "descending"
+   },
+   "status": 200,
+   "body": "<?xml version='1.0' encoding='UTF-8'?>\n<feed xmlns:opensearch=\"http://a9.com/-/spec/opensearch/1.1/\" xmlns:arxiv=\"http://arxiv.org/schemas/atom\" xmlns=\"http://www.w3.org/2005/Atom\">\n  <id>https://arxiv.org/api/4RwpVxdzqOQS423yeBklPMu80O4</id>\n  <title>arXiv Query: search_query=( (ti:\"older adults\" OR abs:\"older adults\" OR ti:elderly OR abs:elderly OR ti:aged OR abs:aged) AND (ti:exercise OR abs:exercise OR ti:\"physical activity\" OR abs:\"physical activity\") AND (ti:depression OR abs:depression OR ti:\"depressive symptoms\" OR abs:\"depressive symptoms\") ) AND submittedDate:\"201501010000 TO 202512312359\"&amp;id_list=&amp;start=2&amp;max_results=1</title>\n  <updated>2026-11-07T14:41:04Z</updated>\n  <link href=\"https://arxiv.org/api/query?search_query=((ti:%22older+adults%22+OR+(abs:%22older+adults%22+OR+(ti:elderly+OR+(abs:elderly+OR+(ti:aged+OR+abs:aged)))))+AND+((ti:exercise+OR+(abs:exercise+OR+(ti:%22physical+activity%22+OR+abs:%22physical+activity%22)))+AND+(ti:depression+OR+(abs:depression+OR+(ti:%22depressive+symptoms%22+OR+abs:%22depressive+symptoms%22)))))+AND+submittedDate:%22201501010000+TO+202512312359%22&amp;start=2&amp;max_results=1&amp;id_list=\" type=\"application/atom+xml\"/>\n  <opensearch:itemsPerPage>1</opensearch:itemsPerPage>\n  <opensearch:totalResults>8</opensearch:totalResults>\n  <opensearch:startIndex>2</opensearch:startIndex>\n  <entry>\n    <id>http://arxiv.org/abs/2508.10062v1</id>\n    <title>Excessive Screen Time is Associated with Mental Health Problems and ADHD in US Children and Adolescents: Physical Activity and Sleep as Parallel Mediators</title>\n    <updated>2025-08-13T03:13:44Z</updated>\n    <link href=\"https://arxiv.org/abs/2508.10062v1\" rel=\"alternate\" type=\"text/html\"/>\n    <link href=\"https://arxiv.org/pdf/2508.10062v1\" rel=\"related\" type=\"application/pdf\" title=\"pdf\"/>\n    <summary>To examine associations between screen time and anxiety, depression, behavior or conduct problems, and ADHD among children and adolescents during the pandemic, and to assess whether physical activity, sleep duration, and bedtime regularity mediate these associations. Data from 50231 US children and adolescents aged 6 to 17 years in the 2020 to 2021 National Survey of Childrens Health were analyzed. Exact natural effect models and structural equation modeling assessed mediation by physical activity, short sleep duration, and irregular bedtime. We found that daily screen time equal or more than 4 hours was linked to higher risks of anxiety (aOR = 1.45, 95% CI 1.32, 1.58), depression (aOR = 1.65, 95% CI 1.41, 1.93), behavior or conduct problems (aOR = 1.17, 95% CI 1.05, 1.30), and ADHD (aOR = 1.21, 95% CI 1.11, 1.33). Physical activity accounted for 30.2% to 39.3% of the association, irregular bedtime for 18.2% to 25.7%, and short sleep duration for 2.77% to 7.34%. Excessive screen time was associated with poorer mental health and ADHD, partly explained by reduced physical activity, irregular bedtime, and insufficient sleep. Interventions should promote physical activity, regular sleep routines, and adequate sleep duration to effectively mitigate mental health issues and ADHD among children and adolescents.</summary>\n    <category term=\"q-bio.NC\" scheme=\"http://arxiv.org/schemas/atom\"/>\n    <published>2025-08-13T03:13:44Z</published>\n    <arxiv:primary_category term=\"q-bio.NC\"/>\n    <arxiv:journal_ref>Humanities &amp; Social Sciences Communications 2026</arxiv:journal_ref>\n    <author>\n      <name>Ying Dai</name>\n    </author>\n    <author>\n      <name>Na Ouyang</name>\n    </author>\n    <arxiv:doi>10.1057/s41599-026-06609-1</arxiv:doi>\n    <link rel=\"related\" href=\"https://doi.org/10.1057/s41599-026-06609-1\" title=\"doi\"/>\n  </entry>\n</feed>\n"
+  }
+ ]
+}
