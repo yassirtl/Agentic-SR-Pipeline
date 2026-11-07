@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field
 
+from .agents.extraction import describe_extraction
 from .agents.retrieval import describe_search
 from .agents.screening import describe_screening
 from .guardrail import (MAX_STEPS, PREREQUISITES, STAGES, StageName, check_move,
@@ -34,6 +35,7 @@ def summarize_state(state: ReviewState) -> str:
     if search:
         lines.append(search)
     lines += describe_screening(state)
+    lines += describe_extraction(state)
     issues = state.get("qa_report", {}).get("issues", [])
     if issues:
         lines.append("Last critic issues: " + "; ".join(map(str, issues)))
