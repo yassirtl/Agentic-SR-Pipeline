@@ -219,7 +219,7 @@ Screening prompts, rules and models are frozen from here. Every change below was
 | 6c | Exclusions on different criteria go to the adjudicator; positive test sentences for T3 E1–E3 (reversed quote on Huang) |
 | 6d | D title rule (a protocol got D "yes" from all three LLM calls) |
 | 6d | Eligibility-list quotes: E "yes" from the study's own eligibility sentence → unclear, plus prompt rule (Makizako lost at FT) |
-| 6d | Adjudicator stays gpt-4o-mini: gpt-4.1-mini tested, lost Makizako at FT and looped once |
+| 6d | Adjudicator stays gpt-4o-mini: gpt-4.1-mini tested (TA: 6 decisions changed, A/B calls identical; one call looped to the token cap). At FT Makizako was excluded in that run, but on different passages (FT index built over a different include set) screener A also changed its answer and the adjudicator sided with it, so that loss is not due to the model alone |
 
 ### Part 7: Extraction + risk of bias
 - **Build:** `agents/extraction.py`; fields derived from protocol (PICO + design, sample size, outcome, effect); every field with source quote via RAG; risk-of-bias tool chosen by design (RoB 2 trials, ROBINS-I non-randomized, simple checklist otherwise), domain-level judgments with reasons.
