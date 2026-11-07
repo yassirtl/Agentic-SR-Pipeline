@@ -22,9 +22,22 @@ labels, never DOIs.
 - *everything else*: narrative synthesis following SWiM (Campbell 2020): grouping by
   outcome, standardised metric = direction of effect, synthesis method = vote counting by
   direction (with a sign test), heterogeneity described, risk of bias next to each study.
-  Direction comes only from verified per-arm means and the protocol's
-  ``outcome_directions`` (lower or higher is better); a p value alone never gives a
-  direction ("not extractable" instead).
+  A p value alone never gives a direction ("not extractable" instead).
+
+**Direction of effect (Part 8b)**, with the protocol's ``outcome_directions`` (lower or
+higher is better):
+
+- only between-group results count: an estimate marked within-group (one arm before vs
+  after) is shown but never used; any other one (including one the LLM labels
+  between-group) counts only if its quote names a control arm and another arm
+  (``estimate_role``);
+- one metric per study, the first available in the protocol's ``direction_metric_order``
+  (default: between-group difference with a stated contrast order > post-intervention
+  means of both arms > change from baseline of both arms, printed or derived by code from
+  verified baseline and post means). ``metric_used`` is recorded; ``metric_conflict`` when
+  another available metric points the opposite way. The text must name conflicts and give
+  a heterogeneity statement per outcome (checked by the critic). Pooling (Hedges' g) still
+  uses post-intervention means only.
 
 **Text** (``agent="synthesis"``): the LLM gets the evidence tables (formatted by code) and
 returns sentences, each with the labels of the studies it is about. Code checks every
@@ -47,7 +60,7 @@ from pydantic import BaseModel, Field
 from ..forest import forest_plot, paired_forest
 from ..llm import LLM
 from ..meta import ci, dersimonian_laird, hedges_g, pooled_proportion, sign_test, wilson
-from ..protocol import better_direction
+from ..protocol import DEFAULT_METRIC_ORDER, better_direction, metric_order
 from ..state import ReviewState, latest, stage_round
 from .extraction import included_papers, numbers, outcomes
 from .screening import _sum_usage
@@ -97,13 +110,31 @@ def study_list(state: ReviewState) -> list[dict]:
 
 # --- Continuous outcomes -------------------------------------------------------------------
 
+# A timepoint that is the baseline, not a result (guard: the extraction prompt asks for
+# baseline means inside the arm entry, but a model may still list a "baseline" arm).
+BASELINE_TP = re.compile(r"baseline|\bpre(?:[- ]?(?:intervention|test|treatment))?\b|"
+                         r"\bbefore\b", re.I)
+# Difference measures: their sign gives a direction once the contrast order is known.
+# Ratios (OR, RR, HR) and p values never do here.
+DIFFERENCE = re.compile(r"differ|\bsmd\b|\bmd\b|hedges|cohen", re.I)
+ARM_STOP = {"group", "groups", "arm", "the", "and", "with", "program", "programme"}
+
+METRIC_NAMES = {"between_group_estimate": "between-group estimate",
+                "post_means": "post-intervention means",
+                "change_means": "change from baseline"}
+OPPOSITE = {"favours intervention": "favours control",
+            "favours control": "favours intervention"}
+
+
 def arm_pair(arms: list[dict]) -> tuple[dict, dict, str] | None:
-    """(intervention arm, control arm, timepoint): the first timepoint with exactly one
-    control arm and one other arm. None for multi-arm or unlabelled results."""
+    """(intervention arm, control arm, timepoint): the first non-baseline timepoint with
+    exactly one control arm and one other arm. None for multi-arm or unlabelled results."""
     by_tp: dict[str, list[dict]] = {}
     for a in arms:
         by_tp.setdefault((a.get("timepoint") or "").strip(), []).append(a)
     for tp, group in by_tp.items():
+        if tp and BASELINE_TP.search(tp) and not re.search(r"post|after|follow", tp, re.I):
+            continue
         ctrl = [a for a in group if CONTROL_ARM.search(a.get("arm") or "")]
         inter = [a for a in group if a not in ctrl]
         if len(ctrl) == 1 and len(inter) == 1:
@@ -111,9 +142,98 @@ def arm_pair(arms: list[dict]) -> tuple[dict, dict, str] | None:
     return None
 
 
-def study_outcome(study: dict, oid: str, better: str) -> dict:
-    """One study's result for one outcome: direction and, if possible, Hedges' g."""
-    out = {"label": study["label"], "direction": "not extractable", "g": None}
+def names_arm(quote: str, arm: str | None) -> bool:
+    """The quote names this arm: one of its words (3+ letters, not 'group'...) appears as a
+    whole word."""
+    words = [w for w in re.findall(r"[A-Za-z]{3,}", arm or "") if w.lower() not in ARM_STOP]
+    return any(re.search(rf"\b{re.escape(w)}\b", quote or "", re.I) for w in words)
+
+
+def estimate_role(est: dict, quote: str, arms: list[dict]) -> tuple[str, bool]:
+    """(comparison, counts for direction). Part 8b fix 1: a within-group result (one arm
+    before/after) never counts. Any other result counts only if its quote names a control
+    arm and another arm. This applies to 'between_group' too: seen live, gpt-4o-mini
+    labels every estimate between_group (8/8), e.g. "participants in the exercise group
+    had decreased GDS-15 scores" (no control arm named). An unverified label is kept as
+    claimed and shown, but the estimate does not count."""
+    comp = est.get("comparison") or "unknown"
+    if comp == "within_group":
+        return comp, False
+    ctrl = [a for a in arms if CONTROL_ARM.search(a.get("arm") or "")]
+    other = [a for a in arms if a not in ctrl]
+    both = (any(names_arm(quote, a.get("arm")) for a in ctrl)
+            and any(names_arm(quote, a.get("arm")) for a in other))
+    return comp, both
+
+
+def _direction(diff: float, better: str) -> str | None:
+    """Direction of an intervention-minus-control difference; None if the scale's good
+    end is unknown."""
+    if better not in ("lower", "higher"):
+        return None
+    if diff == 0:
+        return "no difference"
+    good = diff < 0 if better == "lower" else diff > 0
+    return "favours intervention" if good else "favours control"
+
+
+def direction_metrics(res: dict, pair: tuple | None, better: str,
+                      estimates: list[dict]) -> dict[str, dict]:
+    """Every metric that can give this study a direction (Part 8b fix 2), each with its
+    direction or the reason it cannot: {metric: {"direction", "detail"} | {"reason"}}."""
+    out: dict[str, dict] = {}
+    # (1) Between-group effect estimate: counted, a difference measure, a value, and the
+    # paper's contrast order (a bare "mean difference -2.1" has no known sign convention).
+    usable = [e for e in estimates if e["counts"] and e.get("value") is not None
+              and DIFFERENCE.search(e.get("measure") or "")]
+    signed = [e for e in usable if e.get("contrast")]
+    if signed:
+        e = signed[0]
+        diff = e["value"] if e["contrast"] == "intervention minus control" else -e["value"]
+        out["between_group_estimate"] = {"direction": _direction(diff, better),
+                                         "detail": f"{e['measure']} {e['value']:g} "
+                                                   f"({e['contrast']})"}
+    else:
+        out["between_group_estimate"] = {"reason": (
+            "difference without a stated contrast order" if usable else
+            "no between-group difference with a value")}
+    if pair is None:
+        why = "no single intervention-control arm pair"
+        out["post_means"] = {"reason": why}
+        out["change_means"] = {"reason": why}
+        return out
+    a_i, a_c, _ = pair
+    # (2) Post-intervention means of both arms.
+    if a_i.get("mean") is not None and a_c.get("mean") is not None:
+        out["post_means"] = {"direction": _direction(a_i["mean"] - a_c["mean"], better),
+                             "detail": f"{a_i['mean']:g} vs {a_c['mean']:g}"}
+    else:
+        out["post_means"] = {"reason": "per-arm means not verified"}
+    # (3) Change from baseline of both arms: printed, else derived by code from the
+    # verified baseline and post means of the same arm (code arithmetic, labelled).
+    changes = []
+    for a in (a_i, a_c):
+        if a.get("change_mean") is not None:
+            changes.append((a["change_mean"], "printed"))
+        elif a.get("baseline_mean") is not None and a.get("mean") is not None:
+            changes.append((round(a["mean"] - a["baseline_mean"], 4), "derived"))
+    if len(changes) == 2:
+        (ci_, si), (cc, sc) = changes
+        how = "printed" if si == sc == "printed" else "derived from baseline and post means"
+        out["change_means"] = {"direction": _direction(ci_ - cc, better),
+                               "detail": f"{ci_:g} vs {cc:g} ({how})",
+                               "intervention": ci_, "control": cc}
+    else:
+        out["change_means"] = {"reason": "change from baseline not available in both arms"}
+    return out
+
+
+def study_outcome(study: dict, oid: str, better: str,
+                  order: list[str] | tuple[str, ...] = tuple(DEFAULT_METRIC_ORDER)) -> dict:
+    """One study's result for one outcome: direction (first available metric in the
+    protocol's order, conflict flagged) and, if possible, Hedges' g (post means)."""
+    out = {"label": study["label"], "direction": "not extractable", "g": None,
+           "metric_used": None, "metric_conflict": False}
     e = study["extraction"]
     if e is None:
         return out | {"reason": "not extracted"}
@@ -123,27 +243,46 @@ def study_outcome(study: dict, oid: str, better: str) -> dict:
     out["measure"] = measure
     if res is None:
         return out | {"reason": "no verified result"}
-    out["estimates"] = [x for x in res.get("estimates") or []
-                        if x.get("value") is not None or x.get("p_value")]
-    pair = arm_pair(res.get("arms") or [])
+    arms = res.get("arms") or []
+    ests = []
+    for x in res.get("estimates") or []:
+        if x.get("value") is None and not x.get("p_value"):
+            continue
+        comp, counts = estimate_role(x, res.get("quote") or "", arms)
+        ests.append({**x, "comparison": comp, "counts": counts})
+    out["estimates"] = ests
+    pair = arm_pair(arms)
+    if pair is not None:
+        a_i, a_c, tp = pair
+        keys = ("arm", "n", "mean", "sd", "baseline_mean", "change_mean", "change_sd")
+        out |= {"timepoint": tp, "intervention": {k: a_i.get(k) for k in keys},
+                "control": {k: a_c.get(k) for k in keys}}
+    metrics = direction_metrics(res, pair, better, ests)
+    out["metrics"] = metrics
+    if better not in ("lower", "higher"):
+        return out | {"reason": "direction of the scale unknown (protocol outcome_directions)"}
+    available = [m for m in order if metrics.get(m, {}).get("direction")]
+    if not available:
+        return out | {"reason": "; ".join(f"{METRIC_NAMES[m]}: {metrics[m]['reason']}"
+                                          for m in order if "reason" in metrics[m])}
+    used = available[0]
+    out |= {"direction": metrics[used]["direction"], "metric_used": used}
+    against = [m for m in available[1:]
+               if metrics[m]["direction"] == OPPOSITE.get(out["direction"])]
+    if against:
+        out["metric_conflict"] = True
+        out["conflict"] = (f"{METRIC_NAMES[used]} {out['direction']}, but "
+                           + ", ".join(f"{METRIC_NAMES[m]} {metrics[m]['direction']}"
+                                       for m in against)
+                           + f"; protocol order uses {METRIC_NAMES[used]}")
     if pair is None:
-        return out | {"reason": "no single intervention-control arm pair"}
-    a_i, a_c, tp = pair
-    out |= {"timepoint": tp, "intervention": {k: a_i.get(k) for k in ("arm", "n", "mean", "sd")},
-            "control": {k: a_c.get(k) for k in ("arm", "n", "mean", "sd")}}
+        return out
+    a_i, a_c, _ = pair
     if a_i.get("mean") is None or a_c.get("mean") is None:
-        return out | {"reason": "per-arm means not verified"}
-    diff = a_i["mean"] - a_c["mean"]
-    if better == "unknown":
-        out["reason"] = "direction of the scale unknown (protocol outcome_directions)"
-    elif diff == 0:
-        out["direction"] = "no difference"
-    else:
-        good = diff < 0 if better == "lower" else diff > 0
-        out["direction"] = "favours intervention" if good else "favours control"
+        return out
     nums = [a.get(k) for a in (a_i, a_c) for k in ("n", "sd")]
     if any(x is None for x in nums):
-        return out | {"reason": out.get("reason") or "n or SD not verified: no effect size"}
+        return out | {"reason": "n or SD not verified: no effect size"}
     try:
         g, v = hedges_g(a_i["n"], a_i["mean"], a_i["sd"], a_c["n"], a_c["mean"], a_c["sd"])
     except ValueError as exc:
@@ -153,16 +292,28 @@ def study_outcome(study: dict, oid: str, better: str) -> dict:
 
 
 def synthesise_outcome(oid: str, outcome: str, better: str, studies: list[dict],
-                       min_pool: int = MIN_POOL) -> dict:
-    per = [study_outcome(s, oid, better) for s in studies]
+                       min_pool: int = MIN_POOL,
+                       order: list[str] | tuple[str, ...] = tuple(DEFAULT_METRIC_ORDER)) -> dict:
+    per = [study_outcome(s, oid, better, order) for s in studies]
     effects = [p for p in per if p["g"] is not None]
     votes = Counter(p["direction"] for p in per)
     fav_i, fav_c = votes["favours intervention"], votes["favours control"]
+    # Strict majority of the studies with a direction; a study against it is shown to the
+    # critic (warning: check the source; never corrected here).
+    majority = ("favours intervention" if fav_i > fav_c else
+                "favours control" if fav_c > fav_i else None)
     group = {"id": oid, "outcome": outcome, "better": better, "per_study": per,
+             "metric_order": list(order),
              "vote_count": {"favours intervention": fav_i, "favours control": fav_c,
                             "no difference": votes["no difference"],
                             "not extractable": votes["not extractable"],
                             "sign_test_p": sign_test(fav_i, fav_c)},
+             "metrics_used": dict(Counter(p["metric_used"] for p in per
+                                          if p["metric_used"])),
+             "conflicts": [p["label"] for p in per if p["metric_conflict"]],
+             "majority": majority,
+             "against_majority": [p["label"] for p in per if majority
+                                  and p["direction"] == OPPOSITE[majority]],
              "effects": len(effects), "meta": None, "plot": None}
     if len(effects) >= min_pool:
         m = dersimonian_laird([p["g"] for p in effects], [p["var"] for p in effects])
@@ -252,6 +403,35 @@ def _field(e: dict | None, key: str, n: int = 80) -> str:
     return v if len(v) <= n else v[:n - 3] + "..."
 
 
+def _arm(a: dict) -> str:
+    out = f"{a['arm']} n={_v(a['n'])} mean {_v(a['mean'])} SD {_v(a['sd'])}"
+    if a.get("baseline_mean") is not None:
+        out += f" (baseline mean {_v(a['baseline_mean'])})"
+    if a.get("change_mean") is not None:
+        out += f" (change {_v(a['change_mean'])}" + (
+            f" SD {_v(a['change_sd'])})" if a.get("change_sd") is not None else ")")
+    return out
+
+
+def heterogeneity_line(g: dict) -> str:
+    """Material for the heterogeneity statement (SWiM item 6), computed by code: the
+    instruments used and the spread of directions; I2 / tau2 are on the meta-analysis
+    line when there is one."""
+    instruments: dict[str, list[str]] = {}
+    for p in g["per_study"]:
+        if p.get("measure"):
+            instruments.setdefault(p["measure"].strip().rstrip("."), []).append(p["label"])
+    dirs: dict[str, list[str]] = {}
+    for p in g["per_study"]:
+        dirs.setdefault(p["direction"], []).append(p["label"])
+    return ("Heterogeneity material: instruments: "
+            + ("; ".join(f"{m} ({', '.join(ls)})" for m, ls in instruments.items())
+               or "not reported")
+            + ". Directions: " + "; ".join(f"{d} {', '.join(ls)}" for d, ls in dirs.items())
+            + "." + (f" Against the majority direction: {', '.join(g['against_majority'])}."
+                     if g["against_majority"] else ""))
+
+
 def evidence_text(studies: list[dict], groups: list[dict], dta: dict | None) -> str:
     rows = []
     for s in studies:
@@ -288,9 +468,7 @@ def evidence_text(studies: list[dict], groups: list[dict], dta: dict | None) -> 
             bits = [f"{p['label']}: measure {p.get('measure') or 'not reported'}"]
             if p.get("intervention"):
                 i, c = p["intervention"], p["control"]
-                bits.append(f"{i['arm']} n={_v(i['n'])} mean {_v(i['mean'])} SD "
-                            f"{_v(i['sd'])} vs {c['arm']} n={_v(c['n'])} mean "
-                            f"{_v(c['mean'])} SD {_v(c['sd'])}"
+                bits.append(f"{_arm(i)} vs {_arm(c)}"
                             + (f" ({p['timepoint']})" if p.get("timepoint") else ""))
             for x in p.get("estimates") or []:
                 est = f"{x['measure']}"
@@ -300,18 +478,39 @@ def evidence_text(studies: list[dict], groups: list[dict], dta: dict | None) -> 
                         est += f" (95% CI {x['ci_low']} to {x['ci_high']})"
                 if x.get("p_value"):
                     est += f", p {x['p_value']}"
-                bits.append(f"reported {est}")
+                role = {"between_group": "between-group" if x["counts"] else
+                        "between-group (claimed; quote does not name both arms)",
+                        "within_group": "within-group (one arm before/after)"}.get(
+                    x["comparison"], "comparison not stated")
+                bits.append(f"reported {role} {est}" + ("" if x["counts"] else
+                            " [not a between-group result: not used for direction]"))
             if p["g"] is not None:
                 bits.append(f"Hedges' g {_f(p['g'])} (95% CI {_f(p['ci_low'])} to "
                             f"{_f(p['ci_high'])})")
+            shown = [f"{METRIC_NAMES[m]} {d['direction']} ({d['detail']})"
+                     for m, d in (p.get("metrics") or {}).items() if d.get("direction")]
+            if shown:
+                bits.append("metrics: " + ", ".join(shown))
             bits.append(f"direction: {p['direction']}"
+                        + (f" (from {METRIC_NAMES[p['metric_used']]})"
+                           if p.get("metric_used") else "")
                         + (f" ({p['reason']})" if p.get("reason") else ""))
+            if p.get("metric_conflict"):
+                bits.append(f"METRIC CONFLICT: {p['conflict']}")
             lines.append("  " + "; ".join(bits))
         v = g["vote_count"]
+        lines.append(f"Direction metric order (protocol): "
+                     + " > ".join(METRIC_NAMES[m] for m in g["metric_order"]) + "; used: "
+                     + (", ".join(f"{METRIC_NAMES[m]} {k}" for m, k in g["metrics_used"].items())
+                        or "none") + ".")
         lines.append(f"Vote count by direction of effect: favours intervention "
                      f"{v['favours intervention']}, favours control {v['favours control']}, "
                      f"no difference {v['no difference']}, not extractable "
                      f"{v['not extractable']}; sign test p {_p(v['sign_test_p'])}.")
+        if g["conflicts"]:
+            lines.append(f"Metric conflicts (direction depends on the metric): "
+                         f"{', '.join(g['conflicts'])}.")
+        lines.append(heterogeneity_line(g))
         if g["meta"]:
             m = g["meta"]
             lines.append(f"Random-effects meta-analysis ({m['k']} studies: "
@@ -350,9 +549,19 @@ class Sentence(BaseModel):
                                "e.g. ['S1', 'S4']; every study it summarises.")
 
 
+class Heterogeneity(BaseModel):
+    outcome: str = Field(description="Outcome id ('O1', 'O2', ...).")
+    text: str = Field(description="One or two sentences: I2 / tau2 when pooled; otherwise "
+                      "the spread of directions and how the studies differ (population, "
+                      "intervention dose, instrument, risk of bias). No study labels in it.")
+    studies: list[str] = Field(description="Labels of the studies it is about.")
+
+
 class Narrative(BaseModel):
     sentences: list[Sentence] = Field(description="The synthesis, section by section, in "
                                       "reading order.")
+    heterogeneity: list[Heterogeneity] = Field(
+        default_factory=list, description="Required: one entry per outcome (SWiM item 6).")
 
 
 SWIM_RULES = (
@@ -361,10 +570,19 @@ SWIM_RULES = (
     "- One section per outcome (section = its id), then a section 'overall' (strength and "
     "limitations of the evidence).\n"
     "- For each outcome say: how studies were grouped, the metric (standardised mean "
-    "difference, or direction of effect), the synthesis method (meta-analysis, or vote "
-    "counting by direction of effect), the result, the heterogeneity (I2 / tau2, or how "
-    "the studies differ: instruments, interventions, doses, populations) and the risk of "
-    "bias of the studies behind the result.\n"
+    "difference, or direction of effect and which result gave it), the synthesis method "
+    "(meta-analysis, or vote counting by direction of effect), the result and the risk "
+    "of bias of the studies behind the result.\n"
+    "- Heterogeneity goes in the separate 'heterogeneity' list, one entry per outcome "
+    "(required): I2 / tau2 when a meta-analysis was done; otherwise the spread of "
+    "directions and how the studies differ (population, intervention dose, instrument, "
+    "risk of bias), from the 'Heterogeneity material' line and the study table.\n"
+    "- Only between-group results (intervention arm vs control arm) say anything about "
+    "the effect. Results marked within-group or 'not used for direction' (one arm "
+    "before vs after) must never be presented as an effect of the intervention.\n"
+    "- For every study marked METRIC CONFLICT, write a sentence citing it that says its "
+    "direction depends on the metric (e.g. post-intervention means vs change from "
+    "baseline point in opposite directions) and which one the protocol order used.\n"
     "- Vote counting counts directions only. Never call an intervention effective, or a "
     "result significant, from individual p values; only the meta-analysis p value or the "
     "sign test p value printed below may be described as significant (p < 0.05).\n"
@@ -378,11 +596,31 @@ SWIM_RULES = (
 )
 
 
-def narrative_prompt(protocol: dict, evidence: str, feedback: list[str]) -> str:
+def required_items(groups: list[dict]) -> list[str]:
+    """Items code will check in this draft, spelled out per outcome and study (seen live:
+    gpt-4o-mini skipped the general METRIC CONFLICT rule in 3 rounds out of 3)."""
+    items = []
+    for g in groups:
+        m = g.get("meta")
+        items.append(f"'heterogeneity' entry for {g['id']}"
+                     + (f" giving I2 {100 * m['i2']:.0f}% and tau2 {m['tau2']:.3f}" if m
+                        else " (spread of directions, how the studies differ)"))
+        for p in g["per_study"]:
+            if p.get("metric_conflict"):
+                items.append(f"a sentence in section {g['id']} with studies ['{p['label']}'] "
+                             f"saying its direction depends on the metric: {p['conflict']}")
+    return items
+
+
+def narrative_prompt(protocol: dict, evidence: str, feedback: list[str],
+                     required: list[str] = ()) -> str:
     fix = ""
+    if required:
+        fix += ("\nRequired in this draft (checked by code):\n"
+                + "\n".join(f"- {r}" for r in required) + "\n")
     if feedback:
-        fix = ("\nA critic found these problems in the previous draft. Fix every one:\n"
-               + "\n".join(f"- {f}" for f in feedback) + "\n")
+        fix += ("\nA critic found these problems in the previous draft. Fix every one:\n"
+                + "\n".join(f"- {f}" for f in feedback) + "\n")
     outs = "; ".join(f"{oid}: {o}" for oid, o in outcomes(protocol)) or "(none)"
     return (
         "You write the results synthesis of a PRISMA 2020 systematic review.\n"
@@ -449,22 +687,32 @@ def check_narrative(sentences: list[dict], labels: list[str], evidence: str,
     return out
 
 
-def render(protocol: dict, sentences: list[dict], studies: list[dict]) -> str:
+def _cite(s: dict, abstract: set[str]) -> str:
+    if not s["studies"]:
+        return s["text"]
+    return (s["text"].rstrip(".") + " ["
+            + ", ".join(c + (DAGGER if c in abstract else "") for c in s["studies"]) + "].")
+
+
+def render(protocol: dict, sentences: list[dict], studies: list[dict],
+           heterogeneity: list[dict] = ()) -> str:
     """Markdown: one heading per section, citations after each sentence, abstract-only
-    studies marked with a dagger."""
+    studies marked with a dagger, then the outcome's heterogeneity statement."""
     abstract = {s["label"] for s in studies if s["abstract_only"]}
     names = dict(outcomes(protocol)) | {"overall": "Overall"}
     parts = []
-    for sec in list(names) + sorted({s["section"] for s in sentences} - set(names)):
+    for sec in list(names) + sorted({s["section"] for s in [*sentences, *heterogeneity]}
+                                    - set(names)):
         sents = [s for s in sentences if s["section"] == sec]
-        if not sents:
+        het = [h for h in heterogeneity if h["section"] == sec]
+        if not sents and not het:
             continue
         head = f"{sec}: {names[sec]}" if sec in names and sec != "overall" else names.get(
             sec, sec)
-        body = " ".join(
-            s["text"].rstrip(".") + " ["
-            + ", ".join(c + (DAGGER if c in abstract else "") for c in s["studies"]) + "]."
-            if s["studies"] else s["text"] for s in sents)
+        body = " ".join(_cite(s, abstract) for s in sents)
+        if het:
+            body += ("\n\n" if body else "") + "*Heterogeneity.* " + " ".join(
+                _cite(h, abstract) for h in het)
         parts.append(f"### {head}\n\n{body}")
     if abstract:
         parts.append(f"{DAGGER} Data extracted from the abstract only (no open-access full "
@@ -492,8 +740,9 @@ def make_synthesis(llm: LLM, *, out_dir: str | Path, min_pool: int = MIN_POOL):
         completed = state.get("completed_stages", [])
         rnd = stage_round("synthesis", completed)
         studies = study_list(state)
+        order = metric_order(protocol)
         groups = [synthesise_outcome(oid, o, better_direction(protocol, o), studies,
-                                     min_pool) for oid, o in outcomes(protocol)]
+                                     min_pool, order) for oid, o in outcomes(protocol)]
         dta = synthesise_diagnostic(studies, min_pool)
 
         author = {s["label"]: f"{s['label']} {s['author']} {s['year'] or ''}".strip()
@@ -527,21 +776,26 @@ def make_synthesis(llm: LLM, *, out_dir: str | Path, min_pool: int = MIN_POOL):
         sections = [oid for oid, _ in outcomes(protocol)] + ["overall"]
         usage, flags = [], []
         try:
-            ans, u = llm.call_with_usage(Narrative, narrative_prompt(protocol, evidence,
-                                                                     feedback),
-                                         agent="synthesis")
+            ans, u = llm.call_with_usage(Narrative, narrative_prompt(
+                protocol, evidence, feedback, required_items(groups)), agent="synthesis")
             usage.append(u)
             sentences = check_narrative([s.model_dump() for s in ans.sentences], labels,
                                         evidence, sections)
+            heterogeneity = check_narrative(
+                [{"section": h.outcome.strip().upper(), "text": h.text,
+                  "studies": h.studies} for h in ans.heterogeneity],
+                labels, evidence, sections[:-1])
         except Exception as exc:  # never crash the run: the critic will see no text
             flags.append(f"llm_error: {type(exc).__name__}: {exc}"[:300])
-            sentences = []
-        checks = Counter(f.split(":")[0] for s in sentences for f in s["flags"])
+            sentences, heterogeneity = [], []
+        checks = Counter(f.split(":")[0] for s in [*sentences, *heterogeneity]
+                         for f in s["flags"])
         result = {
             "round": rnd,
             "studies": [{k: v for k, v in s.items() if k != "extraction"} for s in studies],
             "outcomes": groups, "diagnostic": dta, "evidence": evidence,
-            "narrative": sentences, "text": render(protocol, sentences, studies),
+            "narrative": sentences, "heterogeneity": heterogeneity,
+            "text": render(protocol, sentences, studies, heterogeneity),
             "checks": dict(checks), "flags": flags, "feedback": feedback,
         }
         return {
@@ -552,6 +806,9 @@ def make_synthesis(llm: LLM, *, out_dir: str | Path, min_pool: int = MIN_POOL):
                            "methods": {g["id"]: g["method"] for g in groups}
                            | ({"DTA": dta["method"]} if dta else {}),
                            "effects": {g["id"]: g["effects"] for g in groups},
+                           "metrics_used": {g["id"]: g["metrics_used"] for g in groups},
+                           "metric_conflicts": {g["id"]: g["conflicts"] for g in groups},
+                           "heterogeneity": len(heterogeneity),
                            "sentences": len(sentences), "checks": dict(checks),
                            "feedback_items": len(feedback), "flags": flags,
                            "plots": [g["plot"] for g in groups if g["plot"]]

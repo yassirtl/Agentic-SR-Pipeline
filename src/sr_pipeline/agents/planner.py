@@ -141,7 +141,8 @@ def make_planner(llm: LLM, template: Template, topic: dict | None = None):
                                                - {"study_designs"}),
                             study_designs=designs,
                             databases=databases, database_reason=reason,
-                            years=template.years, languages=template.languages)
+                            years=template.years, languages=template.languages,
+                            direction_metric_order=template.direction_metric_order)
         completed = state.get("completed_stages", [])
         protocol_dict, seeded = protocol.model_dump(mode="json"), {}
         if topic is not None:

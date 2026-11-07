@@ -200,6 +200,10 @@ def ext_item(pid, arms=(), estimates=(), abstract=False, design="randomized tria
             "design_category_verified": True, "diagnostic": None}
 
 
+HET = {"outcome": "O1", "studies": ["S1"],
+       "text": "I2 and tau2 are in the tables; doses and instruments varied."}
+
+
 def records(n):
     return [{"paper_id": f"p{i}", "title": f"Trial {i}", "year": 2010 + i,
              "authors": [f"Author{i}, A"]} for i in range(1, n + 1)]
@@ -231,7 +235,7 @@ def trial_exts(k):
 
 def cite_all(prompt):
     labels = sorted(set(re.findall(r"^(S\d+) \|", prompt, re.M)))
-    return {"sentences": [
+    return {"heterogeneity": [HET | {"studies": labels}], "sentences": [
         {"section": "O1", "text": "Studies were grouped by outcome and compared by direction "
          "of effect.", "studies": labels},
         {"section": "overall", "text": "Risk of bias was some concerns in most studies.",
@@ -352,7 +356,7 @@ def test_critic_code_checks(tmp_path):
 
 def test_critic_passes_and_llm_blocker_needs_verified_evidence(tmp_path):
     narrative = {"sentences": [{"section": "O1", "text": "All trials favoured exercise.",
-                                "studies": ["S1", "S2", "S3"]}]}
+                                "studies": ["S1", "S2", "S3"]}], "heterogeneity": [HET]}
     st = critic_state(tmp_path, narrative)
     qa = make_critic(ScriptedLLM({"critic": [{"issues": []}]}))(st)["qa_report"]
     assert qa["passed"] and not qa["loop_back"] and qa["issues"] == []
@@ -391,7 +395,7 @@ def loop_graph(tmp_path, synth_answers, coordinator):
 
 def missing_s2(prompt):
     return {"sentences": [{"section": "O1", "text": "Exercise was compared with usual care.",
-                           "studies": ["S1", "S3"]}]}
+                           "studies": ["S1", "S3"]}], "heterogeneity": [HET]}
 
 
 def test_critic_loop_reruns_synthesis_with_feedback_then_reports(tmp_path):
@@ -399,7 +403,8 @@ def test_critic_loop_reruns_synthesis_with_feedback_then_reports(tmp_path):
         if "A critic found these problems" in prompt:
             assert "study_not_cited: S2" in prompt
             return {"sentences": [{"section": "O1", "text": "Exercise was compared with "
-                                   "usual care.", "studies": ["S1", "S2", "S3"]}]}
+                                   "usual care.", "studies": ["S1", "S2", "S3"]}],
+                    "heterogeneity": [HET]}
         return missing_s2(prompt)
 
     final, llm = loop_graph(tmp_path, answer, list(STAGES[:-1]) + ["synthesis", "critic",

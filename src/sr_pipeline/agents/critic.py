@@ -11,6 +11,11 @@ Checks by code (deterministic):
 - **count consistency**: studies in the synthesis = ``included`` = PRISMA full-text
   "studies included" (blocker);
 - **missing studies**: an included study never cited (blocker);
+- **heterogeneity** (Part 8b): every outcome has a heterogeneity statement, giving
+  I2 / tau2 when the outcome was pooled (blocker);
+- **metric conflicts** (Part 8b): a study whose direction depends on the metric is named
+  in a sentence that says so (blocker); a study against the majority direction is a
+  warning (a human checks the source; values are never corrected);
 - **abstract-only studies flagged**: when some studies were extracted from the abstract
   only, the text must say so (warning; the citations already carry a dagger);
 - **synthesis errors**: an LLM error left no text (blocker).
@@ -27,6 +32,7 @@ last extraction. The Coordinator is told; it cannot loop when ``loop_back`` is F
 rule in ``coordinator.py``). After the last loop the issues stay in the report.
 """
 
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -37,6 +43,11 @@ from .extraction import outcomes
 from .screening import _sum_usage, quote_found
 
 MAX_LOOPS = 2
+
+CONFLICT_WORDS = re.compile(r"conflict|opposite|change from baseline|change score|"
+                            r"depend|disagree|inconsistent", re.I)
+
+I2_WORDS = re.compile(r"\bI\s?(?:2|²|\^2|-squared)|\btau", re.I)
 
 NON_RCT = {"non-randomized intervention study", "diagnostic accuracy study", "other"}
 
@@ -101,6 +112,21 @@ def code_checks(state: ReviewState) -> list[dict]:
                                      f"{s['label']} is a {s['design_category']} (protocol: "
                                      f"{', '.join(protocol['study_designs'])})"))
 
+    # Heterogeneity statement per outcome (SWiM item 6, Part 8b fix 3)
+    het = syn.get("heterogeneity") or []
+    for oid, outcome in outcomes(protocol):
+        mine = [h for h in het if h["section"] == oid]
+        if not mine:
+            issues.append(_issue("blocker", "heterogeneity_missing",
+                                 f"outcome {oid} ({outcome}) has no heterogeneity statement"))
+            continue
+        pooled = next((g for g in syn["outcomes"] if g["id"] == oid and g.get("meta")), None)
+        if pooled and not any(I2_WORDS.search(h["text"]) for h in mine):
+            m = pooled["meta"]
+            issues.append(_issue("blocker", "heterogeneity_without_i2",
+                                 f"outcome {oid} was pooled: its heterogeneity statement must "
+                                 f"give I2 {100 * m['i2']:.0f}% / tau2 {m['tau2']:.3f}"))
+
     # Unsupported claims (code check of the text)
     for i, s in enumerate(sents, 1):
         for f in s["flags"]:
@@ -108,6 +134,27 @@ def code_checks(state: ReviewState) -> list[dict]:
             sev = "warning" if kind in ("no_citation", "unknown_section") else "blocker"
             issues.append(_issue(sev, kind, f"sentence {i} ('{s['text'][:120]}'): {f}",
                                  sentence=i))
+    for h in het:
+        for f in h["flags"]:
+            kind = f.split(":")[0]
+            sev = "warning" if kind in ("no_citation", "unknown_section") else "blocker"
+            issues.append(_issue(sev, kind, f"heterogeneity {h['section']} "
+                                 f"('{h['text'][:120]}'): {f}"))
+
+    # Metric conflicts must be named in the text (Part 8b fix 2); a study whose direction
+    # is opposite to the majority is shown for a human check of the source (never fixed).
+    for g in syn["outcomes"]:
+        for label in g.get("conflicts") or []:
+            if not any(label in x["studies"] and CONFLICT_WORDS.search(x["text"])
+                       for x in [*sents, *het]):
+                issues.append(_issue("blocker", "conflict_not_mentioned",
+                                     f"{label} ({g['id']}): its direction depends on the "
+                                     "metric (METRIC CONFLICT in the tables) and no sentence "
+                                     "citing it says so"))
+        for label in g.get("against_majority") or []:
+            issues.append(_issue("warning", "direction_against_majority",
+                                 f"{label} ({g['id']}) points the other way from the majority "
+                                 f"({g['majority']}): check the values in the source"))
 
     # Count consistency
     n_syn = len(syn["studies"])

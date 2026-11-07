@@ -204,9 +204,17 @@ class ArmResult(BaseModel):
     timepoint: str = Field("", description="e.g. 'post-intervention', '12 weeks'.")
     n: float | None = Field(None, description="Participants analysed in this arm; null if "
                             "not printed.")
-    mean: float | None = Field(None, description="Mean score; null if not printed.")
+    mean: float | None = Field(None, description="Mean score at this timepoint; null if "
+                               "not printed.")
     sd: float | None = Field(None, description="Standard deviation; null if not printed "
                              "(do not convert an SE or CI).")
+    baseline_mean: float | None = Field(None, description="Mean score of this arm at "
+                                        "baseline (before the intervention); null if not "
+                                        "printed.")
+    change_mean: float | None = Field(None, description="Mean change from baseline of this "
+                                      "arm, as printed (never computed); null if not "
+                                      "printed.")
+    change_sd: float | None = Field(None, description="SD of the change; null if not printed.")
 
 
 class Estimate(BaseModel):
@@ -216,6 +224,13 @@ class Estimate(BaseModel):
     ci_low: float | None = None
     ci_high: float | None = None
     p_value: str = Field("", description="As printed, e.g. '0.03', '<0.001'.")
+    comparison: Literal["between_group", "within_group", ""] = Field(
+        "", description="between_group = intervention arm compared with the control arm; "
+        "within_group = one arm compared with its own baseline (before/after). Empty if "
+        "the quote does not say.")
+    contrast: Literal["intervention minus control", "control minus intervention", ""] = Field(
+        "", description="For a difference (mean difference, SMD): which arm was subtracted, "
+        "only if the paper says so; empty otherwise.")
 
 
 class OutcomeResult(BaseModel):
@@ -569,8 +584,9 @@ def check_results(raw: list[dict], outcome_ids: list[str], chunks: list[dict],
             return None
 
         arms = [{**a, "n": keep(a.get("n"), f"{a.get('arm')}.n", *n_quotes),
-                 "mean": keep(a.get("mean"), f"{a.get('arm')}.mean"),
-                 "sd": keep(a.get("sd"), f"{a.get('arm')}.sd")} for a in r.get("arms") or []]
+                 **{k: keep(a.get(k), f"{a.get('arm')}.{k}")
+                    for k in ("mean", "sd", "baseline_mean", "change_mean", "change_sd")}}
+                for a in r.get("arms") or []]
         ests = []
         for e in r.get("estimates") or []:
             p = e.get("p_value") or ""
@@ -580,10 +596,15 @@ def check_results(raw: list[dict], outcome_ids: list[str], chunks: list[dict],
             ests.append({**e, "value": keep(e.get("value"), f"{e.get('measure')}.value"),
                          "ci_low": keep(e.get("ci_low"), f"{e.get('measure')}.ci_low"),
                          "ci_high": keep(e.get("ci_high"), f"{e.get('measure')}.ci_high"),
-                         "p_value": p})
+                         "p_value": p,
+                         # Part 8b: unstated comparison = "unknown" (synthesis then counts
+                         # it only if the quote names both arms).
+                         "comparison": e.get("comparison") or "unknown",
+                         "contrast": e.get("contrast") or ""})
         if dropped:
             flags.append(f"number_not_in_quote_{oid}")
-        kept = [x for a in arms for x in (a["mean"], a["sd"])] + [
+        kept = [x for a in arms for x in (a["mean"], a["sd"], a["baseline_mean"],
+                                          a["change_mean"])] + [
             x for e in ests for x in (e["value"], e["ci_low"], e["ci_high"])]
         if all(x is None for x in kept) and not any(e["p_value"] for e in ests):
             # No outcome number (group sizes alone are not a result). Seen live: abstracts
@@ -739,10 +760,14 @@ def extraction_prompt(protocol: dict, paper: dict, chunks: list[dict],
         "percentages, or convert units (e.g. an SE into an SD): a value whose numbers are "
         "not in its quote is rejected.\n"
         "- Results: for each outcome listed, copy the post-intervention (or last "
-        "follow-up) results per arm (n, mean, SD) and any between-group estimate with its "
-        "confidence interval and p value, from one quote that prints every number (a "
-        "table row or a sentence; '...' between separate parts). Leave a number null if it "
-        "is not printed.\n"
+        "follow-up) results per arm (n, mean, SD; baseline mean and mean change from "
+        "baseline in the same arm entry when printed, never as a separate arm) and any "
+        "estimate with its confidence interval and p value, from one quote that prints "
+        "every number (a table row or a sentence; '...' between separate parts). Leave a "
+        "number null if it is not printed.\n"
+        "- For each estimate say what it compares: between_group (intervention arm vs "
+        "control arm) or within_group (one arm before vs after, e.g. a p value in an arm's "
+        "own column or 'improved from baseline'); empty if the quote does not say.\n"
         f"{hint}"
         "- design_category: judge from the design quote.\n\n"
         f"Fields:\n{fields}\n\nOutcomes:\n{outs}\n\n"

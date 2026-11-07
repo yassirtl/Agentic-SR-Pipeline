@@ -24,6 +24,21 @@ from pydantic import BaseModel, Field, model_validator
 
 Database = Literal["openalex", "pubmed", "arxiv"]
 
+# Part 8b: which result gives a study's direction of effect, in this order (the first one
+# available is used). Pre-specified in the protocol, so it is not chosen after seeing the
+# results: (1) a between-group effect estimate, (2) post-intervention means of both arms,
+# (3) change-from-baseline means of both arms.
+DirectionMetric = Literal["between_group_estimate", "post_means", "change_means"]
+DEFAULT_METRIC_ORDER: list[str] = ["between_group_estimate", "post_means", "change_means"]
+
+
+def _check_metric_order(order: list[str]) -> list[str]:
+    if not order:
+        raise ValueError("direction_metric_order needs at least one metric")
+    if len(set(order)) != len(order):
+        raise ValueError(f"direction_metric_order has duplicates: {order}")
+    return order
+
 
 class PICO(BaseModel):
     population: str = Field(description="Who is studied (patients, participants, systems).")
@@ -128,9 +143,13 @@ class Protocol(ProtocolDraft):
     # Criterion text -> one positive test sentence the screeners judge instead of the
     # (displayed) wording, e.g. for the review's negative exclusion criteria (Part 6c).
     criterion_tests: dict[str, str] = Field(default_factory=dict)
+    # Scope, from the template (Part 8b): never drafted by the LLM.
+    direction_metric_order: list[DirectionMetric] = Field(
+        default_factory=lambda: list(DEFAULT_METRIC_ORDER))
 
     @model_validator(mode="after")
     def _tags_follow_criteria(self):
+        _check_metric_order(self.direction_metric_order)
         """Stage tags and test sentences are keyed by criterion text: a criterion that was
         reworded or removed (e.g. at approval) loses them, nothing stale survives."""
         texts = set(self.inclusion_criteria) | set(self.exclusion_criteria)
@@ -160,6 +179,14 @@ class Template(BaseModel):
     inclusion_criteria: list[str] = Field(default_factory=list)
     exclusion_criteria: list[str] = Field(default_factory=list)
     pico: dict[str, str | list[str]] = Field(default_factory=dict)
+    direction_metric_order: list[DirectionMetric] = Field(
+        default_factory=lambda: list(DEFAULT_METRIC_ORDER),
+        description="Result used for a study's direction of effect, first available wins.")
+
+    @model_validator(mode="after")
+    def _order(self):
+        _check_metric_order(self.direction_metric_order)
+        return self
 
 
 def better_direction(protocol: dict, outcome: str) -> str:
@@ -168,6 +195,11 @@ def better_direction(protocol: dict, outcome: str) -> str:
         if d.get("outcome") == outcome:
             return d.get("better") or "unknown"
     return "unknown"
+
+
+def metric_order(protocol: dict) -> list[str]:
+    """The protocol's direction metric order (default for protocols written before 8b)."""
+    return list(protocol.get("direction_metric_order") or DEFAULT_METRIC_ORDER)
 
 
 def choose_databases(template: Template, draft: ProtocolDraft) -> tuple[list[str], str]:

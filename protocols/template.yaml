@@ -1,7 +1,7 @@
 # PRISMA 2020 protocol template.
 #
 # Scope (applied as is, the Planner never changes it):
-#   years, languages, and databases when given as a list.
+#   years, languages, direction_metric_order, and databases when given as a list.
 # databases: auto lets the Planner choose (openalex always, pubmed for health,
 # arxiv for quantitative fields), with a one-line reason you see at approval.
 # Hints (optional): anything you fill in below is given to the Planner, which
@@ -15,6 +15,9 @@ years:
   end: null          # last publication year (null = up to now)
   end_date: null     # optional exact last date, YYYY-MM-DD (e.g. a review's search date)
 languages: [English]
+# Result that gives each study's direction of effect in the synthesis, first available
+# wins (pre-specified here, not chosen after seeing the results):
+direction_metric_order: [between_group_estimate, post_means, change_means]
 
 # --- Hints for the Planner (leave empty to let it decide) -------------------
 pico:
