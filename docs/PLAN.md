@@ -172,9 +172,9 @@ Each part: **Goal · Build · Done when · User runs · Explain**.
 | Part | Status | Notes |
 |---|---|---|
 | 1 Architecture + strategy deck | done | 2026-11-07 |
-| 2 Skeleton | done | 2026-11-07 · 7 tests green; LLM disk cache + token cost (§3.4) deferred to a later part |
-| 2b Skeleton fixes (cache + cost, latest decision, coordinator fallback) | next | from the Part 2 review |
-| 3 Config + Planner | todo | |
+| 2 Skeleton | done | 2026-11-07 · 7 tests green; LLM disk cache + token cost (§3.4) done in 2b |
+| 2b Skeleton fixes (cache + cost, latest decision, coordinator fallback) | done | 2026-11-07 · 15 tests green; usage via `call_with_usage()`; stages must tag items with `stage_round()` and read via `latest()` |
+| 3 Config + Planner | next | |
 | 4 Search + sources | todo | |
 | 5 Retrieval + RAG | todo | |
 | 6 Screening | todo | |

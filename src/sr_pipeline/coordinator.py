@@ -2,7 +2,8 @@
 
 from pydantic import BaseModel, Field
 
-from .guardrail import MAX_STEPS, PREREQUISITES, STAGES, StageName, check_move, fresh_stages
+from .guardrail import (MAX_STEPS, PREREQUISITES, STAGES, StageName, check_move,
+                        earliest_stale, fresh_stages)
 from .llm import LLM
 from .state import ReviewState
 
@@ -53,11 +54,21 @@ def coordinator_step(state: ReviewState, llm: LLM, max_steps: int = MAX_STEPS) -
                            "max_steps": max_steps}],
         }
 
-    decision = llm.structured_call(Decision, build_prompt(state), agent="coordinator")
-    stage, reason = check_move(decision.next, state.get("completed_stages", []))
+    completed = state.get("completed_stages", [])
+    try:
+        decision, usage = llm.call_with_usage(Decision, build_prompt(state), agent="coordinator")
+    except Exception as exc:  # bad JSON, validation error, API error after retries
+        # Never crash the run: take the guardrail's deterministic choice instead.
+        # The step still counts, so a dead API ends the run at the budget.
+        stage = earliest_stale(completed) or "report"
+        entry = {"node": "coordinator", "step": steps + 1, "outcome": "llm_error",
+                 "error": f"{type(exc).__name__}: {exc}", "substituted": stage}
+        return {"next_stage": stage, "steps_taken": steps + 1, "audit_log": [entry]}
+
+    stage, reason = check_move(decision.next, completed)
 
     entry = {"node": "coordinator", "step": steps + 1, "proposed": decision.next,
-             "rationale": decision.rationale}
+             "rationale": decision.rationale, **usage.as_dict()}
     if reason is None:
         entry["outcome"] = "accepted"
     else:

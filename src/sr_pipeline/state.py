@@ -9,7 +9,7 @@ LangGraph merges that partial update into the state:
 """
 
 import operator
-from typing import Annotated, TypedDict
+from typing import Annotated, Any, TypedDict
 
 
 class ReviewState(TypedDict, total=False):
@@ -37,3 +37,28 @@ class ReviewState(TypedDict, total=False):
 
     next_stage: str
     steps_taken: int
+
+
+# --- Rounds: no duplicate decisions after a loop-back -----------------------
+# Decision and extraction lists are append-only, so re-running a stage adds a
+# second item for the same paper. Every item carries ``paper_id`` and ``round``;
+# the full history stays in the state (audit trail), but stages that *use*
+# decisions (screening, extraction, synthesis) must read them through latest().
+
+def stage_round(stage: str, completed: list[str]) -> int:
+    """Round number of the run about to happen (1 for the first run of ``stage``)."""
+    return completed.count(stage) + 1
+
+
+def latest(items: list[dict], key: str = "paper_id") -> list[dict]:
+    """Keep only the most recent round per ``key``.
+
+    Ties within the same round keep the item written last. Output order follows
+    each key's first appearance, so results are deterministic.
+    """
+    best: dict[Any, dict] = {}
+    for item in items:
+        k = item[key]
+        if k not in best or item.get("round", 0) >= best[k].get("round", 0):
+            best[k] = item
+    return list(best.values())
