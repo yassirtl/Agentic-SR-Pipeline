@@ -10,9 +10,10 @@ MeSH = Medical Subject Headings, the controlled vocabulary NCBI indexers assign
 to every article: it finds papers that use other words for the same concept.
 Indexing takes weeks to months, so recent papers only match on [tiab]: that is
 why both are OR-ed together. A misspelled MeSH heading matches nothing but does
-no harm, since the [tiab] synonyms still match. A design block may also use
-publication types (``[pt]``, e.g. "randomized controlled trial"[pt]), the
-indexers' label for the study design.
+no harm, since the [tiab] synonyms still match. The study-design block (built
+by code, see ``design_filters.py``) also uses publication types (``[pt]``, e.g.
+"randomized controlled trial"[pt], the indexers' label for the design) and
+title-only words (``[ti]``).
 
 Rate limit: 3 requests/s without key, 10/s with NCBI_API_KEY.
 Open access: a PMC id means the full text is free in PubMed Central.
@@ -48,6 +49,7 @@ class PubMedSource(Source):
         for c in concepts:
             terms = [_tag(t, "tiab") for t in unique_terms(c.keywords)]
             terms += [_tag(t, "mh") for t in unique_terms(c.mesh_terms)]
+            terms += [_tag(t, "ti") for t in unique_terms(c.title_terms)]
             terms += [_tag(t, "pt") for t in unique_terms(c.publication_types)]
             blocks.append(" OR ".join(terms))
         return join_blocks(blocks)

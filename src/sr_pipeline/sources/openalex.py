@@ -65,7 +65,10 @@ class OpenAlexSource(Source):
         http.set_min_interval(HOST, 0.1)  # OpenAlex allows 10 requests/s
 
     def build_query(self, concepts: list[Concept]) -> str:
-        return join_blocks([" OR ".join(phrase(t) for t in unique_terms(c.keywords))
+        # title_and_abstract.search cannot restrict one word to the title: title-only
+        # terms are searched in title and abstract (broader, so no recall is lost).
+        return join_blocks([" OR ".join(phrase(t) for t in unique_terms(c.keywords
+                                                                         + c.title_terms))
                             for c in concepts])
 
     @staticmethod

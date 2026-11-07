@@ -9,7 +9,7 @@ import re
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 # Language names used in the protocol -> ISO 639-1 codes (OpenAlex) and PubMed tags.
 LANGUAGE_CODES = {
@@ -52,6 +52,12 @@ class SearchResult(BaseModel):
                              .isoformat(timespec="seconds"))
     capped: bool = Field(False, description="True if max_records stopped the download early.")
 
+    @computed_field
+    @property
+    def not_retrieved(self) -> int:
+        """Hits never downloaded (PRISMA: identified but not retrieved). Reported, never hidden."""
+        return max(0, self.total_hits - len(self.records))
+
 
 def normalize_doi(doi: str | None) -> str | None:
     """'https://doi.org/10.1/ABC' -> '10.1/abc' (DOIs are case-insensitive)."""
@@ -90,8 +96,10 @@ class Concept(BaseModel):
         description="Matching MeSH headings (PubMed only), exact official spelling.")
     publication_types: list[str] = Field(
         default_factory=list,
-        description="PubMed publication types (tag [pt]), design block only, e.g. "
-                    "'randomized controlled trial'. Leave empty otherwise.")
+        description="Leave empty (filled by code for study-design filters).")
+    title_terms: list[str] = Field(
+        default_factory=list,
+        description="Leave empty (filled by code for study-design filters).")
 
 
 def clean_term(term: str) -> str:

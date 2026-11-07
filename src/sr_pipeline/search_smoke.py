@@ -6,9 +6,10 @@
 
 Two to four LLM calls (planner + search strategy with up to 2 refinements,
 < $0.01) and a few free database requests (hit counts per attempt, then the
-records). ``--check-word`` prints, per database, the share of downloaded
-records whose title or abstract contains one of the words: a rough precision
-measure to compare search strategies. The protocol is not paused for approval (like --auto). Writes to
+records). Per database it reports hits, records downloaded and hits not
+retrieved (above ``max_records``). ``--check-word`` prints, per database, the
+share of downloaded records whose title or abstract contains one of the words:
+a rough precision measure to compare search strategies. The protocol is not paused for approval (like --auto). Writes to
 runs/<run_id>/: protocol.json, search_strategy.json, search_results.json,
 records.jsonl, audit.jsonl. Re-running the same question is free and identical
 (LLM and HTTP caches) unless --refresh is given. The full CLI comes in Part 9.
@@ -58,7 +59,7 @@ def main(argv: list[str] | None = None) -> int:
     state: dict = {"question": args.question, "completed_stages": [], "audit_log": []}
     for node in (make_planner(llm, load_template(cfg.protocol_template)),
                  make_search_strategy(llm, http, max_records=max_records,
-                                      broad_factor=cfg.broad_factor, min_hits=cfg.min_hits,
+                                      min_hits=cfg.min_hits,
                                       max_refinements=cfg.max_refinements,
                                       contact_email=cfg.contact_email)):
         update = node(state)
@@ -70,7 +71,9 @@ def main(argv: list[str] | None = None) -> int:
     state["audit_log"].append({"node": "search_smoke", "event": "databases searched",
                                "http_requests": http.network_calls, "errors": errors,
                                **{f"{db}_hits": r.total_hits for db, r in results.items()},
-                               **{f"{db}_downloaded": len(r.records) for db, r in results.items()}})
+                               **{f"{db}_downloaded": len(r.records) for db, r in results.items()},
+                               **{f"{db}_not_retrieved": r.not_retrieved
+                                  for db, r in results.items()}})
 
     out = audit.run_dir
     (out / "protocol.json").write_text(json.dumps(state["protocol"], indent=2))
@@ -92,8 +95,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Outcomes: {', '.join(protocol['pico']['outcomes'])} | "
           f"comparator: {protocol['pico']['comparator']}")
     print(f"Databases: {', '.join(protocol['databases'])} ({protocol['database_reason']})")
+    designs = strategy.get("design_filter") or []
+    print("Study designs: " + (", ".join(f"{d['design']} [{d['filter']}]" for d in designs)
+                               or "any (no design block)"))
     t = strategy["targets"]
-    print(f"\nSearch attempts (target {t['min_hits']}-{t['max_hits']} hits per database):")
+    print(f"\nSearch attempts (target {t['min_hits']}-{t['max_records']} hits per database):")
     for a in strategy["attempts"]:
         blocks = " AND ".join(c.get("role", c["name"]) for c in a["concepts"])
         counts = ", ".join(f"{db} {n}" for db, n in a["counts"].items())
@@ -105,8 +111,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n[{db}] {query}")
         if db in results:
             r = results[db]
-            print(f"  -> {r.total_hits} hits, {len(r.records)} downloaded"
-                  + (" (capped by max_records)" if r.capped else ""))
+            print(f"  -> {r.total_hits} hits, {len(r.records)} downloaded, "
+                  f"{r.not_retrieved} not retrieved"
+                  + (f" (capped at max_records = {max_records})" if r.capped else ""))
             for rec in r.records[:3]:
                 print(f"     - {rec.year} {rec.title[:90]}")
             if args.check_word and r.records:
@@ -115,6 +122,9 @@ def main(argv: list[str] | None = None) -> int:
                       f"mention {' / '.join(args.check_word)}")
         else:
             print(f"  -> ERROR {errors.get(db)}")
+    print(f"\n{'database':<10}{'hits':>9}{'downloaded':>12}{'not retrieved':>15}")
+    for db, r in results.items():
+        print(f"{db:<10}{r.total_hits:>9}{len(r.records):>12}{r.not_retrieved:>15}")
     print(f"\nOutputs in {out}")
     return 0 if not errors else 2
 

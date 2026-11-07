@@ -9,12 +9,12 @@ models:              # per-agent model; agents not listed use default_model
   # extraction: gpt-4o
   # synthesis: gpt-4o
 
-max_records: 500     # per database
+max_records: 3000    # per database: download ceiling; more hits = "not retrieved" in PRISMA
 max_steps: 40        # coordinator step budget
 
 # Search refinement (search_strategy stage): hit counts are checked before any
 # download; the LLM narrows / broadens the query at most max_refinements times.
-broad_factor: 5      # too broad if hits > broad_factor x max_records (5 x 500 = 2500)
+# A database is in range when min_hits <= hits <= max_records.
 min_hits: 20         # too narrow if hits < min_hits
 max_refinements: 2
 

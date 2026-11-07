@@ -19,8 +19,7 @@ INT = {"name": "intervention", "role": "intervention", "keywords": ["exercise"],
        "mesh_terms": ["Exercise"]}
 OUT = {"name": "outcome", "role": "outcome", "keywords": ["depression", "depressive symptoms"],
        "mesh_terms": ["Depression"]}
-DES = {"name": "design", "role": "design", "keywords": ["randomized controlled trial"],
-       "publication_types": ["randomized controlled trial"]}
+RARE = {"name": "outcome", "role": "outcome", "keywords": ["rare marker"]}
 
 
 def plan(*blocks, why="r"):
@@ -34,16 +33,16 @@ PROTOCOL = {
              "comparator": "no intervention, usual care or any control",
              "outcomes": ["depressive symptoms"]},
     "inclusion_criteria": [], "exclusion_criteria": [],
-    "study_designs": ["randomized controlled trial"],
+    "study_designs": [],
     "databases": ["openalex", "pubmed"], "years": {"start": 2015, "end": None},
     "languages": ["English"],
 }
 
 
 def default_hits(query: str) -> int:
-    """Fake database: P AND I is huge, + outcome is fine, + design is tiny."""
+    """Fake database: P AND I is huge, + outcome is fine, + a rare term is tiny."""
     q = query.lower()
-    if "randomized" in q:
+    if "rare marker" in q:
         return 5
     if "depress" in q:
         return 800
@@ -87,30 +86,28 @@ def http_for(fake: FakeCounts) -> HttpClient:
 def run_stage(answers, fake=None, protocol=PROTOCOL, **kw):
     llm = ScriptedLLM({"search_strategy": answers})
     fake = fake or FakeCounts()
-    node = make_search_strategy(llm, http_for(fake), max_records=500, broad_factor=5,
-                                min_hits=20, env={}, **kw)
+    kw.setdefault("max_records", 1000)
+    node = make_search_strategy(llm, http_for(fake), min_hits=20, env={}, **kw)
     out = node({"protocol": protocol, "completed_stages": ["planner"]})
     return out, llm, fake
 
 
 # --- Fix 1: outcome and design blocks ------------------------------------------------
 
-def test_prompt_asks_for_outcome_block_and_design_only_when_restricted():
+def test_prompt_asks_for_outcome_block_and_never_a_design_block():
     prompt = build_prompt(PROTOCOL, max_records=500)
     assert "Add an outcome block when the primary outcome is specific" in prompt
-    assert "Add a design block only if the protocol restricts the study designs" in prompt
-    assert "Only the 500 most relevant records per database" in prompt
-    assert "Study designs: randomized controlled trial" in prompt
-    assert "Study designs: any" in build_prompt({**PROTOCOL, "study_designs": []})
+    assert "Never write a study-design block" in prompt
+    assert "At most 500 records per database" in prompt
+    assert "Study designs: any\n" in prompt
+    rct = build_prompt({**PROTOCOL, "study_designs": ["randomized controlled trial"]})
+    assert "Study designs: randomized controlled trial (a validated design filter" in rct
 
 
-def test_outcome_and_design_blocks_in_every_database_syntax():
-    q = build_queries([Concept(**c) for c in (POP, INT, OUT, DES)], ["openalex", "pubmed"])
-    assert q["openalex"].count(" AND ") == 3 and "(depression OR " in q["openalex"]
-    # publication types become a [pt] term, for PubMed only
-    assert q["pubmed"].endswith('("randomized controlled trial"[tiab] OR '
-                                '"randomized controlled trial"[pt])')
-    assert "[pt]" not in q["openalex"]
+def test_outcome_block_in_every_database_syntax():
+    q = build_queries([Concept(**c) for c in (POP, INT, OUT)], ["openalex", "pubmed"])
+    assert q["openalex"].count(" AND ") == 2 and "(depression OR " in q["openalex"]
+    assert q["pubmed"].endswith('Depression[mh])') and "[pt]" not in q["pubmed"]
 
 
 def test_specific_outcome_in_first_plan_needs_no_refinement():
@@ -138,14 +135,14 @@ def test_too_broad_is_refined_to_narrower_plan():
     assert "depression" in s["queries"]["openalex"]
     # the LLM saw its previous blocks, the counts and the target range
     refine = llm.calls[1][1]
-    assert "100000 hits -> too broad" in refine and "between 20 and 2500" in refine
+    assert "100000 hits -> too broad" in refine and "between 20 and 1000" in refine
     assert "[population] population: older adults, elderly" in refine
     entry = out["audit_log"][0]
     assert entry["llm_calls"] == 2 and entry["attempts"] == 2 and entry["chosen_attempt"] == 2
 
 
 def test_too_narrow_is_refined_to_broader_plan():
-    out, llm, _ = run_stage([plan(POP, INT, OUT, DES), plan(POP, INT, OUT)])
+    out, llm, _ = run_stage([plan(POP, INT, RARE), plan(POP, INT, OUT)])
     first, second = out["search_strategy"]["attempts"]
     assert first["status"] == {"openalex": "too narrow", "pubmed": "too narrow"}
     assert "5 hits -> too narrow" in llm.calls[1][1]
@@ -157,15 +154,15 @@ def test_stops_after_two_refinements():
     out, llm, _ = run_stage([plan(POP, INT)] * 5)
     s = out["search_strategy"]
     assert len(llm.calls) == 3 and len(s["attempts"]) == 3   # first plan + 2 refinements
-    assert s["attempts"][-1]["reason"].endswith("refinement limit reached")
+    assert s["attempts"][-1]["reason"].count("refinement limit reached") == 1
     assert s["chosen_attempt"] == 3                           # all equal: latest wins
 
 
 def test_overshooting_refinement_does_not_replace_a_better_plan():
     def hits(q):  # attempt 2 is in range for pubmed only; attempt 3 overshoots everywhere
         q = q.lower()
-        return 5 if "randomized" in q else 800 if ("depress" in q and "[" in q) else 100_000
-    out, _, _ = run_stage([plan(POP, INT), plan(POP, INT, OUT), plan(POP, INT, OUT, DES)],
+        return 5 if "rare" in q else 800 if ("depress" in q and "[" in q) else 100_000
+    out, _, _ = run_stage([plan(POP, INT), plan(POP, INT, OUT), plan(POP, INT, OUT, RARE)],
                           fake=FakeCounts(hits))
     s = out["search_strategy"]
     assert [sum(v != "ok" for v in a["status"].values()) for a in s["attempts"]] == [2, 1, 2]
@@ -188,7 +185,7 @@ def test_count_error_is_reported_not_refined():
 def test_no_refinement_when_disabled():
     out, llm, _ = run_stage([plan(POP, INT)], max_refinements=0)
     assert len(llm.calls) == 1
-    assert out["search_strategy"]["attempts"][0]["reason"].endswith("refinement limit reached")
+    assert out["search_strategy"]["attempts"][0]["reason"].count("refinement limit reached") == 1
 
 
 # --- counts use the same filters as the real search ----------------------------------
@@ -210,10 +207,11 @@ def test_count_requests_carry_the_search_filters():
 
 
 def test_refine_settings_from_config_and_env():
-    cfg = load_config(env={"SR_BROAD_FACTOR": "3", "SR_MIN_HITS": "50"})
-    assert (cfg.broad_factor, cfg.min_hits, cfg.max_refinements) == (3, 50, 2)
+    cfg = load_config(env={"SR_MIN_HITS": "50"})
+    assert (cfg.max_records, cfg.min_hits, cfg.max_refinements) == (3000, 50, 2)
+    assert not hasattr(cfg, "broad_factor")            # dropped in Part 4c
     with pytest.raises(ValueError):
-        load_config(env={"SR_BROAD_FACTOR": "1"})
+        load_config(env={"SR_MAX_RECORDS": "20000"})   # above the APIs' paging limit
 
 
 # --- after the first live run: repeated plans, mixed-up blocks -----------------------

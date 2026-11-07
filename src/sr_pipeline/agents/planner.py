@@ -5,6 +5,10 @@ Two graph nodes, on purpose:
 - ``planner`` (a stage): one LLM call that drafts the scientific part of the
   protocol, merged with the scope from the template. With ``databases: auto``
   the same call also picks the databases (see ``protocol.choose_databases``).
+  Study designs restrict the search (a design filter is AND-ed to it), so they
+  come only from the user (template hint, used as is) or from the question
+  itself; designs the LLM adds on its own are dropped by code
+  (``choose_designs``) and logged.
 - ``protocol_approval`` (not a stage, fixed edge after planner): pauses the run
   with LangGraph ``interrupt`` so a human can approve or edit the protocol.
 
@@ -18,6 +22,8 @@ Resume value (``Command(resume=...)``):
 (``None`` and ``{}`` are not usable: LangGraph treats them as "no resume value".)
 Invalid answers or edits do not crash the run: the node asks again with the error.
 """
+
+import re
 
 from pydantic import ValidationError
 from langgraph.types import interrupt
@@ -40,6 +46,23 @@ def _hints(template: Template) -> str:
             lines.append(f"{name.replace('_', ' ').capitalize()} required by the user: "
                          + "; ".join(values))
     return "\n".join(lines)
+
+
+# Words that show the question itself restricts the study design.
+DESIGN_WORDS = re.compile(
+    r"randomi[sz]|\btrials?\b|\brcts?\b|cohort|case.?control|cross.?sectional|"
+    r"observational|longitudinal|prospective|retrospective|qualitative", re.I)
+
+
+def choose_designs(question: str, template: Template, drafted: list[str]
+                   ) -> tuple[list[str], str, list[str]]:
+    """(designs, source, dropped). Template hint wins; else the LLM's designs are kept
+    only when the question names a design; else no restriction."""
+    if template.study_designs:
+        return list(template.study_designs), "template", []
+    if DESIGN_WORDS.search(question):
+        return list(drafted), "question", []
+    return [], "none (any design)", list(drafted)
 
 
 DATABASE_RULE = (
@@ -68,6 +91,9 @@ def build_prompt(question: str, template: Template) -> str:
         "- Comparator: if the question asks about an effect (does X reduce / improve / cause "
         "Y?), write a control, e.g. 'no intervention, usual care or any control'; write "
         "'none' only for questions without any comparison (e.g. prevalence).\n"
+        "- Study designs: only if the question or the user below restricts them; otherwise "
+        "an empty list (any design). Do not add designs you think are suitable, and do not "
+        "restrict designs through the criteria either.\n"
         "- Criteria must be short and testable from a title, abstract or full text.\n"
         "- One idea per criterion; do not repeat the scope (databases, years, languages).\n"
         "- Keep every element the user fixed below; refine, do not contradict.\n"
@@ -86,9 +112,13 @@ def make_planner(llm: LLM, template: Template):
         draft, usage = llm.call_with_usage(schema, build_prompt(question, template),
                                            agent="planner")
         databases, reason = choose_databases(template, draft)
+        designs, design_source, dropped = choose_designs(question, template,
+                                                         draft.study_designs)
         # Years and languages come from the template, never from the LLM.
         protocol = Protocol(question=question,
-                            **draft.model_dump(include=set(ProtocolDraft.model_fields)),
+                            **draft.model_dump(include=set(ProtocolDraft.model_fields)
+                                               - {"study_designs"}),
+                            study_designs=designs,
                             databases=databases, database_reason=reason,
                             years=template.years, languages=template.languages)
         completed = state.get("completed_stages", [])
@@ -98,7 +128,9 @@ def make_planner(llm: LLM, template: Template):
             "audit_log": [{"node": "planner", "step": state.get("steps_taken", 0),
                            "round": stage_round("planner", completed),
                            "event": "protocol drafted", "databases": databases,
-                           "database_reason": reason, **usage.as_dict()}],
+                           "database_reason": reason, "study_designs": designs,
+                           "study_designs_source": design_source,
+                           "study_designs_dropped": dropped, **usage.as_dict()}],
         }
 
     return planner

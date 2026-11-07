@@ -267,14 +267,18 @@ def test_search_strategy_node_builds_queries_for_protocol_databases():
     out = make_search_strategy(llm)({"protocol": PROTOCOL, "completed_stages": ["planner"]})
     s = out["search_strategy"]
     assert set(s["queries"]) == {"pubmed", "arxiv"}            # only the protocol's databases
-    assert s["queries"]["pubmed"].endswith("Aged[mh]) AND (exercis[tiab] OR "
-                                           '"physical activity"[tiab])')
+    # topic blocks from the LLM, then the RCT design block added by code (Part 4c)
+    assert 'Aged[mh]) AND (exercis[tiab] OR "physical activity"[tiab]) AND (' \
+        in s["queries"]["pubmed"]
+    assert s["queries"]["pubmed"].endswith("trial[ti] OR "
+                                           '"randomized controlled trial"[pt] OR '
+                                           '"controlled clinical trial"[pt])')
     assert s["filters"] == {"years": {"start": 2015, "end": None}, "languages": ["English"]}
     assert out["completed_stages"] == ["search_strategy"]
     entry = out["audit_log"][0]
     assert entry["round"] == 1 and entry["queries"] == s["queries"]
     prompt = llm.calls[0][1]
-    assert "adults aged 65 and over" in prompt and "500 most relevant records" in prompt
+    assert "adults aged 65 and over" in prompt and "At most 3000 records per database" in prompt
     assert s["attempts"][0]["reason"].startswith("hit counts not checked")  # no http given
 
 

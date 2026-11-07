@@ -50,7 +50,9 @@ class ProtocolDraft(BaseModel):
     exclusion_criteria: list[str] = Field(
         description="Short, testable reasons to exclude a record, one idea each.")
     study_designs: list[str] = Field(
-        description="Eligible study designs, e.g. 'randomized controlled trial', 'cohort study'.")
+        description="Eligible study designs ONLY if the question or the user restricts them "
+                    "(e.g. 'randomized controlled trial'). Otherwise an empty list = any "
+                    "design. Never add designs you think are suitable.")
     rationale: str = Field(description="Two or three sentences on how the question was framed.")
 
 

@@ -44,8 +44,10 @@ class ArxivSource(Source):
     def build_query(self, concepts: list[Concept]) -> str:
         blocks = []
         for c in concepts:
-            terms = [phrase(t) for t in unique_terms(c.keywords)]
-            blocks.append(" OR ".join(f"{f}:{t}" for t in terms for f in ("ti", "abs")))
+            words = [phrase(t) for t in unique_terms(c.keywords)]
+            terms = [f"{f}:{t}" for t in words for f in ("ti", "abs")]
+            terms += [f"ti:{phrase(t)}" for t in unique_terms(c.title_terms)]
+            blocks.append(" OR ".join(terms))
         return join_blocks(blocks)
 
     @staticmethod
