@@ -83,8 +83,8 @@ class YearRange(BaseModel):
                           "Sets ``end`` to its year.")
     recent: int | None = Field(
         None, ge=1, description="Part 9b: only the last N years. With no ``start``, start = "
-                                "end year (or this year) - N. An explicit ``start`` wins; "
-                                "null = no limit.")
+                                "end year (or this year) - N. An explicit ``start`` wins, "
+                                "and an explicit ``start: null`` = no lower limit.")
 
     @model_validator(mode="after")
     def _ordered(self):
@@ -93,6 +93,11 @@ class YearRange(BaseModel):
                 raise ValueError(f"years.end ({self.end}) and years.end_date "
                                  f"({self.end_date}) disagree")
             self.end = self.end_date.year
+        # Part 10: an explicit `start: null` always means "no lower limit" (as in
+        # topics.yaml). Before, it was silently replaced by `recent` (template default 5),
+        # so a user who wrote `start: null` to search all years got the last 5 only.
+        if "start" in self.model_fields_set and self.start is None:
+            self.recent = None
         if self.start is None and self.recent is not None:
             self.start = (self.end or date.today().year) - self.recent
         if self.start is not None and self.end is not None and self.start > self.end:
