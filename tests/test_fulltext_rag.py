@@ -257,3 +257,16 @@ def test_openai_embedder_caches_and_counts_cost(tmp_path):
                            client_factory=lambda: pytest.fail("cache miss"))
     assert np.allclose(again.embed(["abcd", "ab"]), v[[1, 0]])
     assert again.usage()["api_calls"] == 0 and again.usage()["texts_cached"] == 2
+
+
+def test_oversized_word_is_split_under_the_embedding_limit():
+    # First real run: a chunk of a few huge "words" (PDF text without spaces) exceeded
+    # the embedding API's 8,192-token input limit.
+    from sr_pipeline.rag.chunking import MAX_CHARS, chunk_paper
+    from sr_pipeline.sources.fulltext import FullText, Section
+    blob = "x" * 20000
+    ft = FullText(paper_id="p1", status="pdf", sections=[Section(title="Results", text="a b " + blob)])
+    chunks = chunk_paper({"paper_id": "p1", "title": "T", "abstract": "A"}, ft)
+    assert all(len(c["text"]) <= MAX_CHARS for c in chunks)
+    assert sum(len(c["text"]) for c in chunks) > 20000   # nothing dropped
+    assert len({c["chunk_id"] for c in chunks}) == len(chunks)

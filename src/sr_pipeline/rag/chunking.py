@@ -24,6 +24,11 @@ Words, not tokens: a word count needs no tokenizer download and is stable;
 from ..sources.fulltext import FullText
 
 MIN_WORDS = 60  # sections shorter than this are merged with the next ones
+# Character cap per chunk. Windows count words, but extracted text can hold "words" of
+# thousands of characters (PDF text without spaces, inline data): one such chunk broke
+# the embedding API's 8,192-token input limit (first real run, 2026-11-08). 6,000
+# characters stays under the limit even at ~1 token per character.
+MAX_CHARS = 6000
 
 
 def _windows(words: list[str], size: int, overlap: int) -> list[list[str]]:
@@ -45,8 +50,12 @@ def chunk_paper(paper: dict, fulltext: FullText | None = None, *, size: int = 25
     chunks: list[dict] = []
 
     def add(section: str, words: list[str]) -> None:
-        chunks.append({"chunk_id": f"{pid}::{len(chunks)}", "paper_id": pid,
-                       "section": section, "text": f"[{section}] " + " ".join(words)})
+        prefix = f"[{section[:200]}] "
+        body = " ".join(words)
+        step = MAX_CHARS - len(prefix)
+        for start in range(0, max(len(body), 1), step):  # one piece unless oversized
+            chunks.append({"chunk_id": f"{pid}::{len(chunks)}", "paper_id": pid,
+                           "section": section, "text": prefix + body[start:start + step]})
 
     title = (paper.get("title") or "").strip()
     head = " ".join(p for p in (title + ("." if title and not title.endswith((".", "?", "!"))

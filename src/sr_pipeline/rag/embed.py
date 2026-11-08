@@ -35,6 +35,9 @@ def normalize(vectors: np.ndarray) -> np.ndarray:
     return vectors / np.where(norms == 0, 1, norms)
 
 
+
+MAX_EMBED_CHARS = 8000
+
 class Embedder(Protocol):
     model: str
 
@@ -102,6 +105,9 @@ class OpenAIEmbedder(_Usage):
     def embed(self, texts: list[str]) -> np.ndarray:
         if not texts:
             return np.zeros((0, 0), dtype="float32")
+        # Last guard against the API's 8,192-token input limit (chunks are already
+        # capped at 6,000 characters by the chunker; other callers may not be).
+        texts = [t[:MAX_EMBED_CHARS] for t in texts]
         keys = [self._key(t) for t in texts]
         found = self._lookup(list(dict.fromkeys(keys)))
         missing = list(dict.fromkeys(t for t, k in zip(texts, keys) if k not in found))
