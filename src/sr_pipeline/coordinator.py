@@ -13,6 +13,7 @@ from .llm import LLM
 from .state import ReviewState
 
 END_SIGNAL = "__end__"  # next_stage value that routes the graph to END
+MAX_RESEARCHES = 2      # re-runs of search_strategy allowed after the first one
 
 LIST_FIELDS = ("records", "unique_records", "ta_decisions", "ft_decisions",
                "included", "extractions", "risk_of_bias")
@@ -36,6 +37,9 @@ def summarize_state(state: ReviewState) -> str:
     search = describe_search(state)
     if search:
         lines.append(search)
+    elif "search_strategy" in completed:
+        lines.append("Retrieval: not run yet on the current search strategy "
+                     "(record counts above are 0 because nothing was downloaded yet).")
     lines += describe_screening(state)
     lines += describe_extraction(state)
     lines += describe_synthesis(state)
@@ -57,6 +61,24 @@ def loop_rule(proposed: str, state: ReviewState) -> str | None:
     why = ("no blocker issues" if qa.get("passed") else
            f"loop budget spent ({qa.get('loops_used')}/{qa.get('max_loops')})")
     return f"critic loop not allowed: {why}"
+
+
+def research_rule(proposed: str, state: ReviewState) -> str | None:
+    """Code rule on re-searching (first real run, 2026-11-08: the coordinator read
+    'unique_records=0' before retrieval as 'retrieval found nothing' and re-built the
+    search 39 times). A new search is allowed only once retrieval has run on the current
+    one, and at most MAX_RESEARCHES times. Returns the refusal reason, or None."""
+    if proposed != "search_strategy":
+        return None
+    completed = state.get("completed_stages", [])
+    runs = completed.count("search_strategy")
+    if runs == 0:
+        return None
+    if not is_fresh("retrieval", completed):
+        return "search strategy already built: run retrieval on it before searching again"
+    if runs > MAX_RESEARCHES:
+        return f"re-search budget spent ({runs - 1}/{MAX_RESEARCHES})"
+    return None
 
 
 def build_prompt(state: ReviewState) -> str:
@@ -97,7 +119,7 @@ def coordinator_step(state: ReviewState, llm: LLM, max_steps: int = MAX_STEPS) -
         return {"next_stage": stage, "steps_taken": steps + 1, "audit_log": [entry]}
 
     stage, reason = check_move(decision.next, completed)
-    if reason is None and (rule := loop_rule(stage, state)):
+    if reason is None and (rule := loop_rule(stage, state) or research_rule(stage, state)):
         stage, reason = earliest_stale(completed) or "report", rule
 
     entry = {"node": "coordinator", "step": steps + 1, "proposed": decision.next,

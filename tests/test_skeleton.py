@@ -110,3 +110,31 @@ def test_coordinator_sees_summary_not_raw_records():
     text = summarize_state(state)
     assert "records=3" in text
     assert "SECRET TITLE" not in text
+
+
+# --- re-search rule (first real run, 2026-11-08) ------------------------------
+
+def test_search_strategy_cannot_repeat_before_retrieval():
+    # The real coordinator re-built the search 39 times without ever retrieving.
+    llm = coord("planner", "search_strategy", "search_strategy", *STAGES[3:])
+    _, final = run(llm)
+
+    assert final["completed_stages"] == list(STAGES)
+    refusal = coordinator_entries(final)[2]
+    assert refusal["proposed"] == "search_strategy"
+    assert refusal["outcome"] == "refused"
+    assert refusal["substituted"] == "retrieval"
+    assert "run retrieval" in refusal["reason"]
+
+
+def test_research_budget_is_capped():
+    from sr_pipeline.coordinator import MAX_RESEARCHES, research_rule
+    done = ["planner"] + ["search_strategy", "retrieval"] * (MAX_RESEARCHES + 1)
+    assert "budget spent" in research_rule("search_strategy", {"completed_stages": done})
+    allowed = ["planner"] + ["search_strategy", "retrieval"] * MAX_RESEARCHES
+    assert research_rule("search_strategy", {"completed_stages": allowed}) is None
+
+
+def test_summary_says_retrieval_not_run_yet():
+    text = summarize_state({"question": "Q", "completed_stages": ["planner", "search_strategy"]})
+    assert "Retrieval: not run yet" in text
