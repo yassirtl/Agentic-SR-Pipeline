@@ -6,7 +6,7 @@
     .venv/bin/python -m sr_pipeline.search_smoke "..." --accept-suggested-designs
     .venv/bin/python -m sr_pipeline.search_smoke --topic T3       # evaluation topic
 
-``--topic T1|T2|T3`` (evaluation/topics.yaml): the question, designs, years,
+``--topic T1|T2|T3|D0`` (evaluation/topics.yaml): the question, designs, years,
 languages and criteria of the gold review replace the Planner's (see
 ``evaluation.topics``); the question argument may then be left out.
 
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("question", nargs="?", help="research question (default: the topic's)")
     ap.add_argument("--topic", default=None,
-                    help="evaluation topic of evaluation/topics.yaml (T1, T2, T3): seeds the "
+                    help="evaluation topic of evaluation/topics.yaml (T1, T2, T3, D0): seeds the "
                          "protocol with the gold review's question, scope and criteria")
     ap.add_argument("--max-records", type=int, default=None, help="per database (default: config)")
     ap.add_argument("--refresh", action="store_true", help="re-query databases, ignore HTTP cache")

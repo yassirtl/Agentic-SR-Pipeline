@@ -4,7 +4,7 @@ Draft, 2026-11-08. Code: https://github.com/yassirtl/Agentic-SR-Pipeline. <span 
 
 ## Abstract
 
-We built a multi-agent LangGraph system that runs a PRISMA 2020 systematic review from a single research question: protocol, search of three free databases, deduplication, dual title/abstract and full-text screening, data extraction, risk of bias, synthesis, quality check and report. An LLM coordinator chooses each next stage; code enforces PRISMA prerequisites and refuses unjustified re-runs. Every exclusion, extracted value and risk-of-bias judgment must rest on a quote that code finds in the source text, and every number in the narrative must appear in tables computed by code. We evaluate the pipeline against three published reviews, following each of their included studies through our pipeline stage by stage. In the first full run (exercise and depression in older adults, gpt-4o-mini, $0.37), the search found 7 of the 11 gold studies present in our databases, but only 1 reached the final included set: four of the seven found were outside the screening limit, so no screener saw them, and two to the same screening error on three-arm trials (judged by their extra non-exercise arm). <span class="pending">[pending: T1, T2, unlimited run, human-labelled sample]</span>
+We built a multi-agent LangGraph system that runs a PRISMA 2020 systematic review from a single research question: protocol, search of three free databases, deduplication, dual title/abstract and full-text screening, data extraction, risk of bias, synthesis, quality check and report. An LLM coordinator chooses each next stage; code enforces PRISMA prerequisites and refuses unjustified re-runs. Every exclusion, extracted value and risk-of-bias judgment must rest on a quote that code finds in the source text, and every number in the narrative must appear in tables computed by code. We evaluate the pipeline against three published reviews, following each of their included studies through our pipeline stage by stage. In the first full run (exercise and depression in older adults, gpt-4o-mini, $0.37), the search found 7 of the 11 gold studies present in our databases, but only 1 reached the final included set: four of the seven found were outside the screening limit, so no screener saw them, and two to the same screening error on three-arm trials (judged by their extra non-exercise arm). <span class="pending">[pending: T1, T2, T3, unlimited run, human-labelled sample]</span>
 
 ## 1. Introduction
 
@@ -41,12 +41,13 @@ Every LLM call goes through one function that caches the answer on disk, keyed o
 | # | Gold review | Question | Designs | Search end | Gold |
 |---|---|---|---|---|---|
 | T1 | Nazarian 2021, J Med Internet Res | How accurate are smartwatches at detecting cardiac arrhythmias? | any | 2021-02-28 | 18 |
-| T2 | Kim 2025, J Med Artif Intell | How accurate are LLMs at automated title and abstract screening for systematic reviews? | any | 2024-08-31 | 14 |
-| T3 | Li 2024, Front Psychol | Does exercise reduce depressive symptoms in older adults? | RCT | 2024-01-07 | 15 |
+| T2 | none (new review) | Which lightweight machine-learning models detect abnormal versus normal ECG on resource-constrained devices (microcontroller, wearable, smartphone, FPGA), and how accurate and efficient are they? | any | 2021 to run date | human labels |
+| T3 | Arredondo-Velazquez 2026, Electronics | Which machine-learning models classify ECG into several cardiac classes on embedded devices (microcontroller, FPGA, ASIC), and how accurate and efficient are they? | any | 2021 to 2026-09-21 | 30 |
+| D0 | Li 2024, Front Psychol | Does exercise reduce depressive symptoms in older adults? | RCT | 2024-01-07 | 15 |
 
-Each run uses the review's question, design restriction, search end date and (for T3) eligibility criteria. The gold lists were built from each review's Table 1 and reference list, identifiers copied from the references.
+Each run uses the review's question, design restriction, search window and (for T3 and D0) eligibility criteria; T2 has no published review, its criteria are ours. The gold lists were built from each review's table of included studies and reference list, identifiers copied from the references (T3: the 30 embedded implementations of its Table 2, references from the Crossref deposit; all 30 are in OpenAlex, 16 in PubMed). T2 and T3 also extract the engineering fields of the T3 review (dataset, partition, model size, platform, latency, energy...) and assess risk of bias with its five-domain instrument (protocol stated, inter-patient split, per-class metric, deployed variant, model size) instead of RoB 2 or QUADAS-2.
 
-**Disclosure.** T3 was the development topic: the search and screening rules were tuned on a 50-record T3 sample (tuning log in `docs/PLAN.md`, "Screening freeze"), which contained two gold studies. The full T3 gold list was not used for tuning. T1 and T2 are held out: after seeing their results only bug fixes are allowed, and each is reported.
+**Disclosure.** D0 (called T3 until the topics were revised on 2026-11-08) was the development topic: the search and screening rules were tuned on a 50-record sample (tuning log in `docs/PLAN.md`, "Screening freeze"), which contained two gold studies. The full D0 gold list was not used for tuning. T1, T2 and T3 are held out: after seeing their results only bug fixes are allowed, and each is reported.
 
 ### 3.2 Metrics
 
@@ -59,11 +60,11 @@ The brief asks for completeness, accuracy, inter-agent consistency and time savi
 
 ## 4. Results
 
-### 4.1 T3: exercise and depression in older adults
+### 4.1 D0: exercise and depression in older adults
 
-Run `20261108-091009-f03123` (`--topic T3 --limit 100`): 4,256 records identified (OpenAlex 2,037, PubMed 2,219), 3,631 after deduplication, the 100 most relevant screened (by each database's relevance rank), 28 studies included (19 on abstract only: no open-access full text). The PRISMA counts add up (figure 1). 1,420 LLM calls (686 from cache, after resumes), $0.37, 1.4 h wall clock (including a crash and its resume).
+Run `20261108-091009-f03123` (`--topic T3 --limit 100`, made when D0 was called T3; evaluated with `--topic D0`): 4,256 records identified (OpenAlex 2,037, PubMed 2,219), 3,631 after deduplication, the 100 most relevant screened (by each database's relevance rank), 28 studies included (19 on abstract only: no open-access full text). The PRISMA counts add up (figure 1). 1,420 LLM calls (686 from cache, after resumes), $0.37, 1.4 h wall clock (including a crash and its resume).
 
-![PRISMA 2020 flow diagram, T3](figures/prisma_T3.png)
+![PRISMA 2020 flow diagram, D0](figures/prisma_D0.png)
 
 | Stage | Gold studies still in |
 |---|---|
@@ -82,13 +83,13 @@ Run `20261108-091009-f03123` (`--topic T3 --limit 100`): 4,256 records identifie
 - **Consistency:** title/abstract kappa A vs B 0.25 (agreement 59%, 82 pairs; 44% adjudicated; 18 records removed by the title rule); full text kappa 0.19 (agreement 63%). The guardrail refused 3 coordinator proposals, all attempts to search again.
 - **Extraction and synthesis:** 258 of 392 fields (66%) reported with a verified quote (full text 71%, abstract only 64%). No study had verified per-arm n, mean and SD, so no meta-analysis was possible; the vote count has 1 study favouring exercise and 27 not extractable. The critic passed with 3 warnings; one of them concerns an "overall" sentence that reads a positive effect into a single study, which the code rules do not block.
 
-### 4.2 T1 and T2
+### 4.2 T1, T2 and T3
 
-<span class="pending">[pending: runs `sr-review --topic T1` and `--topic T2`, after copying their eligibility criteria into topics.yaml]</span>
+<span class="pending">[pending: runs `sr-review --topic T1`, `--topic T2` and `--topic T3` (T1: after copying its eligibility criteria into topics.yaml)]</span>
 
 ### 4.3 Cost of the screening limit
 
-<span class="pending">[pending: `sr-review --topic T3 --limit 0` (or a larger limit), then `python -m sr_pipeline.evaluation compare RUN_100 RUN_ALL`]</span>
+<span class="pending">[pending: `sr-review --topic D0 --limit 0` (or a larger limit), then `python -m sr_pipeline.evaluation compare RUN_100 RUN_ALL`]</span>
 
 ### 4.4 Screening accuracy against human labels
 
@@ -96,17 +97,17 @@ Run `20261108-091009-f03123` (`--topic T3 --limit 100`): 4,256 records identifie
 
 ## 5. Discussion
 
-The funnel turns one recall number into causes that can be acted on. In T3, the losses come mostly before any LLM judgment: the databases (4) and the query (4), then the screening limit (4). Of the three gold studies the screeners saw, two were lost to the same error: the adjudicator judged a three-arm trial by its extra non-exercise arm, although it had itself named the exercise-vs-control pair. A rule written in the prompt was not enough; like the quote checks, it needs a code check. The low gold share of our includes (1 of 28) is not yet explained: whether the other 27 are eligible studies the review missed, or screening errors (19 were judged on the abstract only), needs the human-labelled sample and a check of the includes against the review's criteria. <span class="pending">[pending]</span>
+The funnel turns one recall number into causes that can be acted on. In D0, the losses come mostly before any LLM judgment: the databases (4) and the query (4), then the screening limit (4). Of the three gold studies the screeners saw, two were lost to the same error: the adjudicator judged a three-arm trial by its extra non-exercise arm, although it had itself named the exercise-vs-control pair. A rule written in the prompt was not enough; like the quote checks, it needs a code check. The low gold share of our includes (1 of 28) is not yet explained: whether the other 27 are eligible studies the review missed, or screening errors (19 were judged on the abstract only), needs the human-labelled sample and a check of the includes against the review's criteria. <span class="pending">[pending]</span>
 
 The guardrail never had to block an illegal PRISMA move in the real runs. What it caught were legal but useless moves: gpt-4o-mini read "0 records" before retrieval as a failed search and rebuilt the search 39 times in the first attempt. The rules added for this (no re-search before retrieval, no re-run of a fresh stage) are a finding in themselves: an LLM supervisor needs code limits on *repetition*, not only on order.
 
-Requiring a verified quote for every exclusion and value makes the pipeline conservative: it reports "not reported" rather than invent, which explains why no T3 study had complete per-arm data and why the synthesis fell back to a vote count.
+Requiring a verified quote for every exclusion and value makes the pipeline conservative: it reports "not reported" rather than invent, which explains why no D0 study had complete per-arm data and why the synthesis fell back to a vote count.
 
 ## 6. Limitations
 
-- Free databases only; open-access full text only (68% of T3 includes were judged on the abstract).
+- Free databases only; open-access full text only (68% of D0 includes were judged on the abstract).
 - One LLM (gpt-4o-mini) for every agent; stronger models were tried only for the adjudicator.
-- T3 is a development topic (disclosure in 3.1); T1/T2 are the held-out tests.
+- D0 is a development topic (disclosure in 3.1); T1/T2/T3 are the held-out tests.
 - The default screening limit trades recall for cost.
 - RoB 2 is assessed for the first outcome only; diagnostic pooling is univariate.
 

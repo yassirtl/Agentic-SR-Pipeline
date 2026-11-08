@@ -217,7 +217,11 @@ def _methods(state: dict, models: dict[str, str]) -> list[str]:
             "reported` (values are never computed or invented). Risk of bias tool chosen by "
             "code from the verified design: RoB 2 (randomised trials, first protocol "
             "outcome), ROBINS-I (non-randomised studies), QUADAS-2 (diagnostic accuracy), "
-            "else a 5-item checklist; a domain judgment needs a verified quote.", "",
+            "else a 5-item checklist; a domain judgment needs a verified quote."
+            + (f" This protocol replaces them with its own instrument for every study "
+               f"({p.get('checklist_name') or 'review-specific checklist'}: "
+               + "; ".join(f"{d['id']} {d['name']}" for d in p['checklist_domains']) + ")."
+               if p.get("checklist_domains") else ""), "",
             "### Synthesis methods", "",
             f"Continuous outcomes were pooled (random effects, DerSimonian-Laird; Hedges' g "
             f"from post-intervention means) only with at least {MIN_POOL} studies reporting "

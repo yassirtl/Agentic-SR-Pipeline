@@ -352,7 +352,7 @@ def test_main_argument_errors(capsys):
     with pytest.raises(SystemExit):
         cli.main(["--resume", "x", "--auto"])
     with pytest.raises(SystemExit):
-        cli.main(["other question", "--topic", "T3"])
+        cli.main(["other question", "--topic", "D0"])
     with pytest.raises(SystemExit):
         cli.main(["--topic", "T9"])
 

@@ -48,7 +48,7 @@ def test_labels_from_planner_are_checked_and_have_a_fallback():
 
 
 def test_topic_labels_reach_the_protocol_and_the_diagram():
-    topic = load_topic("T3")
+    topic = load_topic("D0")
     p, audit = seed_protocol(Protocol.model_validate(BASE).model_dump(mode="json"), topic)
     assert "criterion_labels" in audit["seeded_fields"]
     labels = criterion_labels(p)
@@ -283,4 +283,4 @@ def test_recent_years():
     assert YearRange(recent=5, end=2020).start == 2015
     assert YearRange(recent=5, start=2010).start == 2010              # explicit start wins
     assert YearRange().start is None                                    # no limit
-    assert load_topic("T3")["years"]["start"] is None   # a topic's window replaces the default
+    assert load_topic("D0")["years"]["start"] is None   # a topic's window replaces the default

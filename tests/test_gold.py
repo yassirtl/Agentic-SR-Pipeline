@@ -108,7 +108,7 @@ def test_coverage_rerun_is_served_from_cache(tmp_path):
 
 
 def test_gold_files_match_the_reviews():
-    sizes = {"T1": 18, "T2": 14, "T3": 15}
+    sizes = {"T1": 18, "T3": 30, "D0": 15, "dropped_kim2025": 14}
     for topic, n in sizes.items():
         rows = load_gold(ROOT / "evaluation" / "gold" / f"{topic}.csv")
         assert len(rows) == n

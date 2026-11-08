@@ -3,7 +3,7 @@
 An evaluation run must use the same question, designs, search window, languages
 and eligibility criteria as the published review it is compared with; otherwise
 recall measures the difference between two protocols, not the pipeline. Seen in
-Part 6: the Planner wrote "aged 65 or older" for T3 (the review: over 60) and
+Part 6: the Planner wrote "aged 65 or older" for D0, then T3 (the review: over 60) and
 that one criterion drove most exclusions.
 
 Two places use a topic:
@@ -23,7 +23,10 @@ A criterion in ``topics.yaml`` is a string, or ``{text, stage, test, label}`` (P
 stays the one displayed. ``load_topic`` flattens them into the text lists plus
 ``full_text_criteria`` and ``criterion_tests``.
 
-T1 / T2 have no criteria in ``topics.yaml`` yet: their runs keep the Planner's
+Part 10: a topic may also give ``extraction_fields`` ({key: question}) and
+``checklist_domains`` (the review's own risk-of-bias instrument), copied into the protocol.
+
+T1 has no criteria in ``topics.yaml`` yet: their runs keep the Planner's
 criteria, and ``criteria_source`` says so.
 """
 
@@ -40,6 +43,8 @@ PLANNER_SOURCE = "Planner (LLM draft)"
 def load_topic(topic_id: str, path: str | Path | None = None) -> dict:
     """One topic of topics.yaml, with its id. Raises KeyError for an unknown id."""
     topics = yaml.safe_load(Path(path or TOPICS_FILE).read_text()) or {}
+    # Keys starting with "_" hold shared YAML anchors (e.g. _engineering_fields), not topics.
+    topics = {k: v for k, v in topics.items() if not str(k).startswith("_")}
     if topic_id not in topics:
         raise KeyError(f"unknown topic {topic_id!r} (known: {', '.join(topics)})")
     topic = {"id": topic_id, **topics[topic_id]}
@@ -110,6 +115,19 @@ def seed_protocol(protocol: dict, topic: dict) -> tuple[dict, dict]:
         out["outcome_directions"] = [{"outcome": k, "better": v} for k, v in given.items()] + [
             d for d in out.get("outcome_directions") or [] if d["outcome"] not in given]
         fields.append("outcome_directions")
+    # Part 10 (engineering topics): extra extraction fields and the review's own
+    # risk-of-bias domains (``[id, name, question]`` triples in topics.yaml).
+    if topic.get("extraction_fields"):
+        out["extraction_fields"] = {str(k): str(v) for k, v in
+                                    topic["extraction_fields"].items()}
+        fields.append("extraction_fields")
+    if topic.get("checklist_domains"):
+        out["checklist_name"] = str(topic.get("checklist_name") or
+                                    f"Risk-of-bias domains of {topic.get('review', 'the review')}")
+        out["checklist_domains"] = [{"id": str(d[0]), "name": str(d[1]),
+                                     "question": str(d[2])}
+                                    for d in topic["checklist_domains"]]
+        fields += ["checklist_name", "checklist_domains"]
     out["topic"] = topic["id"]
     out["criteria_source"] = criteria_source(topic)
     out = Protocol.model_validate(out).model_dump(mode="json")

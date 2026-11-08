@@ -46,7 +46,7 @@ FT_FAIL = answer(*OK, v("I2", "no", "Groups differed at baseline in age"),
 # --- Fix 1: criteria tagged by stage ----------------------------------------------------
 
 def test_topic_tags_flow_into_the_protocol():
-    t3 = load_topic("T3")
+    t3 = load_topic("D0")
     assert all(isinstance(c, str) for c in t3["inclusion_criteria"] + t3["exclusion_criteria"])
     assert t3["full_text_criteria"] == [
         "No significant baseline difference between experimental and control groups",
@@ -69,7 +69,7 @@ def test_reworded_criterion_loses_its_tag():
                           "pico": {"population": "", "intervention": "", "comparator": "",
                                    "outcomes": []},
                           "inclusion_criteria": [], "exclusion_criteria": [],
-                          "study_designs": [], "databases": ["openalex"]}, load_topic("T3"))
+                          "study_designs": [], "databases": ["openalex"]}, load_topic("D0"))
     edited = [c if "baseline" not in c else "Groups comparable at baseline"
               for c in p["inclusion_criteria"]]
     approved, _, _ = apply_answer(p, {"edits": {"inclusion_criteria": edited}})

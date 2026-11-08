@@ -444,7 +444,7 @@ def test_outcome_directions_follow_outcomes_and_topic_seeding():
     assert better_direction(p.model_dump(), "depressive symptoms") == "lower"
     assert better_direction(p.model_dump(), "anxiety") == "unknown"
     seeded, audit = seed_protocol(p.model_dump(mode="json") | {"outcome_directions": []},
-                                  load_topic("T3"))
+                                  load_topic("D0"))
     assert better_direction(seeded, "depressive symptoms") == "lower"
     assert "outcome_directions" in audit["seeded_fields"]
 

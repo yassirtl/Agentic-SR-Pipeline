@@ -52,6 +52,8 @@ given as a hint, so extraction reports the same comparison screening accepted.
   Added beyond the plan: two of the three evaluation topics (T1, T2) are
   diagnostic-accuracy reviews;
 - anything else -> a short generic **checklist** (5 items, low / high / unclear).
+- Part 10: a protocol with ``checklist_domains`` (the review's own instrument, from an
+  evaluation topic) assesses every study with those domains instead (``tool_for``).
 
 If the design category has no verified quote, the protocol decides when it allows one
 design only (every include passed D at screening), else the checklist; the path is
@@ -395,6 +397,8 @@ class RiskOfBias(BaseModel):
 def choose_tool(design_category: str | None, verified: bool, protocol: dict
                 ) -> tuple[str, str]:
     """(tool key, how it was chosen)."""
+    if protocol.get("checklist_domains"):
+        return "checklist", "protocol instrument (review's own domains)"
     if design_category and verified:
         return TOOL_FOR.get(design_category, "checklist"), "extracted design"
     designs = protocol.get("study_designs") or []
@@ -407,6 +411,18 @@ def choose_tool(design_category: str | None, verified: bool, protocol: dict
         if "non-randomi" in d or "cohort" in d or "quasi" in d:
             return "robins_i", "protocol design (design not verified)"
     return "checklist", "default (design not verified)"
+
+
+def tool_for(key: str, protocol: dict) -> Tool:
+    """The tool to apply; the checklist takes the protocol's own domains when it has them
+    (Part 10: e.g. data leakage, hardware metrics for embedded-ECG studies)."""
+    domains = protocol.get("checklist_domains") or []
+    if key != "checklist" or not domains:
+        return TOOLS[key]
+    base = TOOLS["checklist"]
+    return Tool("checklist", protocol.get("checklist_name") or "Review-specific checklist",
+                base.levels, base.no_evidence,
+                tuple((d["id"], d["name"], d["question"]) for d in domains))
 
 
 def overall(tool: Tool, judgments: list[str]) -> str | None:
@@ -965,7 +981,7 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
         for (item, _, _), paper in zip(ext, papers):
             tool_key, chosen_by = choose_tool(item["design_category"],
                                               item["design_category_verified"], protocol)
-            tool = TOOLS[tool_key]
+            tool = tool_for(tool_key, protocol)
             dq = {did: f"{name}: {what}" for did, name, what in tool.domains}
             plan.append((paper, item, tool, chosen_by, dq,
                          _retrieve(index, paper["paper_id"], dq, in_index[paper["paper_id"]])))

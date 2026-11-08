@@ -7,7 +7,7 @@
     .venv/bin/python -m sr_pipeline.screen_smoke runs/20261107-160209-aec820 --topic T3 \\
         --limit 50 --gold evaluation/gold/T3_coverage.csv
 
-``--topic T1|T2|T3`` re-seeds the search run's protocol with the gold review's
+``--topic T1|T2|T3|D0`` re-seeds the search run's protocol with the gold review's
 question, designs, years, languages and criteria (evaluation/topics.yaml) before
 screening. Only the protocol changes: the records are those of the search run, so
 the topic's years/languages were NOT applied to retrieval (logged in the audit).
@@ -67,7 +67,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--gold", type=Path, default=None, help="gold CSV (a *_coverage.csv is best)")
     ap.add_argument("--no-full-text", action="store_true", help="stop after title/abstract")
     ap.add_argument("--topic", default=None,
-                    help="evaluation topic (T1, T2, T3): screen with the gold review's criteria")
+                    help="evaluation topic (T1, T2, T3, D0): screen with the gold review's criteria")
     args = ap.parse_args(argv)
 
     cfg = load_config()

@@ -27,7 +27,7 @@ def answer(*verdicts, unresolved=False):
 
 # --- Fix 2: D title rule -----------------------------------------------------------------
 
-# Real titles from the dev search (T3 topic).
+# Real titles from the dev search (D0 topic, then called T3).
 NON_PRIMARY = [
     "Exercise for depression in older adults: a meta-analysis of randomized controlled trials",
     "Effects of tai chi on depression in older adults: A Systematic Review and Meta-Analysis",
@@ -73,11 +73,12 @@ def test_title_rule_leaves_primary_studies_alone(title):
 
 
 def test_title_rule_never_fires_on_a_gold_study():
-    """Regression guard: no gold study of T1-T3 (47 primary studies) has a title the rule
-    would exclude. A rule change that breaks this loses gold studies before any LLM call."""
-    rows = [r for f in sorted((ROOT / "evaluation" / "gold").glob("T?.csv"))
-            for r in csv.DictReader(f.open())]
-    assert len(rows) == 47
+    """Regression guard: no gold study (T1, T3, D0, and the dropped Kim 2025 list: 77
+    primary studies) has a title the rule would exclude. A rule change that breaks this
+    loses gold studies before any LLM call."""
+    rows = [r for f in sorted((ROOT / "evaluation" / "gold").glob("*.csv"))
+            if not f.stem.endswith("_coverage") for r in csv.DictReader(f.open())]
+    assert len(rows) == 77
     assert [r["title"] for r in rows if title_rule(r["title"])] == []
 
 

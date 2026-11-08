@@ -5,7 +5,7 @@
 
 The PDF is printed by a Chromium browser in headless mode (Chrome, Chromium, Brave or
 Edge; set REPORT_BROWSER to its executable to choose one). No LaTeX or pandoc needed.
-Images are referenced relative to report.md (e.g. figures/prisma_T3.png).
+Images are referenced relative to report.md (e.g. figures/prisma_D0.png).
 """
 
 import os

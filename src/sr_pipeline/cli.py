@@ -256,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="sr-review",
                                  description="Run a PRISMA 2020 systematic review.")
     ap.add_argument("question", nargs="?", help="research question")
-    ap.add_argument("--topic", help="evaluation topic of evaluation/topics.yaml (T1, T2, T3)")
+    ap.add_argument("--topic", help="evaluation topic of evaluation/topics.yaml (T1, T2, T3, D0)")
     ap.add_argument("--auto", action="store_true",
                     help="never pause: approve the protocol, include unresolved conflicts")
     ap.add_argument("--config", type=Path, help="config YAML (default: config.yaml)")

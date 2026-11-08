@@ -47,9 +47,17 @@ def context(folder: Path, topic_id: str | None = None, labels: Path | None = Non
     state = _json(folder / "state.json")
     run = _json(folder / "run.json")
     summary = _json(folder / "report" / "run_summary.json")
+    given = topic_id
     topic_id = topic_id or run.get("topic") or (state.get("protocol") or {}).get("topic")
     topic = load_topic(topic_id) if topic_id else None
-    gold_rows = load_gold_rows(TOPICS_FILE.parent / topic["gold"]) if topic else None
+    question = (state.get("protocol") or {}).get("question")
+    if topic and not given and question and question != topic["question"]:
+        # Part 10: topic ids were reassigned (old T3 = D0); a run keeps its old id.
+        raise SystemExit(f"run question differs from topics.yaml {topic_id} "
+                         f"({question!r} vs {topic['question']!r}): pass --topic")
+    # A topic without a published review (T2) has no gold list: labels only.
+    gold_rows = (load_gold_rows(TOPICS_FILE.parent / topic["gold"])
+                 if topic and topic.get("gold") else None)
     if labels is None:
         labels = labels_dir(folder.name) / "labels.csv"
         old = folder / "evaluation" / "labels.csv"   # first sheets were written there

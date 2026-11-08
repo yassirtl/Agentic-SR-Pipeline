@@ -96,10 +96,15 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 | Topic | Gold review | Run | Gold: all → in our databases → found by search → screened → kept TA → kept FT | Included | Cost |
 |---|---|---|---|---|---|
 | T1 smartwatches, arrhythmia | Nazarian 2021 (18 studies) | pending | | | |
-| T2 LLMs for abstract screening | Kim 2025 (14 studies) | pending | | | |
-| T3 exercise, depression, older adults | Li 2024 (15 articles) | `--topic T3 --limit 100` | 15 → 11 → 7 → 3 → 2 → 1 | 28 | $0.37 |
+| T2 lightweight ML, abnormal vs normal ECG, constrained devices | none: new review (human labels only) | pending | not applicable | | |
+| T3 ML ECG classification on embedded devices | Arredondo-Velazquez 2026 (30 embedded implementations; 30 in OpenAlex, 16 in PubMed) | pending | | | |
+| D0 exercise, depression, older adults (development topic) | Li 2024 (15 articles) | `--topic T3 --limit 100` (run when D0 was called T3) | 15 → 11 → 7 → 3 → 2 → 1 | 28 | $0.37 |
 
-T3 (first full run, 2026-11-08): the search found 7 of the 11 gold articles our databases hold (64%); 4 gold articles are in Chinese journals indexed by neither OpenAlex nor PubMed. With the default limit of the 100 most relevant records (of 3,631), 4 of the 7 found were never screened (best database ranks 56–382). Of the 3 screened, Makizako 2019 was included; Shahidi 2011 and Huang 2015 were excluded on "interventions beyond exercise": both are three-arm trials (exercise / laughter yoga or CBT / control) judged by their extra arm instead of the exercise-vs-control pair, a screening error. So the losses come from the screening limit and the search first, then from one screening error repeated. Screener agreement was low (kappa 0.25 at title/abstract, 0.19 at full text: the strict and lenient screeners are designed to differ), the critic passed with 3 warnings, and the PRISMA counts add up. These results are from one topic; T1/T2 runs, a run without the screening limit and a human-labelled sample are still to come.
+Topics were revised on 2026-11-08 (`docs/PLAN.md` §4b): T2 and T3 are in the ML-on-ECG,
+on-device field; the exercise topic, on which the search and screening rules were tuned,
+became the development topic D0 (evaluate its run with `--topic D0`).
+
+D0 (first full run, 2026-11-08): the search found 7 of the 11 gold articles our databases hold (64%); 4 gold articles are in Chinese journals indexed by neither OpenAlex nor PubMed. With the default limit of the 100 most relevant records (of 3,631), 4 of the 7 found were never screened (best database ranks 56–382). Of the 3 screened, Makizako 2019 was included; Shahidi 2011 and Huang 2015 were excluded on "interventions beyond exercise": both are three-arm trials (exercise / laughter yoga or CBT / control) judged by their extra arm instead of the exercise-vs-control pair, a screening error. So the losses come from the screening limit and the search first, then from one screening error repeated. Screener agreement was low (kappa 0.25 at title/abstract, 0.19 at full text: the strict and lenient screeners are designed to differ), the critic passed with 3 warnings, and the PRISMA counts add up. These results are from the development topic; T1/T2/T3 runs, a run without the screening limit and a human-labelled sample are still to come.
 
 ## Layout
 

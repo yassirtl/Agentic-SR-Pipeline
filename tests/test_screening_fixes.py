@@ -35,7 +35,7 @@ DRAFT = {
 # --- Fix 1: protocol seeded from topics.yaml ------------------------------------------------
 
 def test_topic_seeds_question_criteria_dates_and_designs():
-    t3 = load_topic("T3")
+    t3 = load_topic("D0")
     llm = ScriptedLLM({"planner": [DRAFT]})
     update = make_planner(llm, TEMPLATE, topic=t3)({"question": "ignored",
                                                     "completed_stages": []})
@@ -48,7 +48,7 @@ def test_topic_seeds_question_criteria_dates_and_designs():
     assert p["years"] == {"start": None, "end": 2024, "end_date": "2024-01-07",
                           "recent": None}  # the topic replaces the template's last-5-years
     assert p["languages"] == ["English", "Chinese"]
-    assert p["topic"] == "T3" and p["criteria_source"].startswith("topics.yaml T3 (review Li")
+    assert p["topic"] == "D0" and p["criteria_source"].startswith("topics.yaml D0 (review Li")
     entry = update["audit_log"][0]
     assert entry["criteria_source"] == p["criteria_source"]
     assert "inclusion_criteria" in entry["seeded"]["seeded_fields"]
@@ -69,7 +69,7 @@ def test_topic_without_criteria_keeps_the_planners_and_says_so():
 
 
 def test_topic_template_scope():
-    tpl = topic_template(TEMPLATE, load_topic("T3"))
+    tpl = topic_template(TEMPLATE, load_topic("D0"))
     assert tpl.years.start is None and tpl.years.end_date == date(2024, 1, 7)
     assert tpl.study_designs == ["randomized controlled trial"]
     assert "Inclusion criteria required by the user" in build_prompt("q", tpl)
@@ -77,7 +77,7 @@ def test_topic_template_scope():
 
 
 def test_approval_shows_seeded_protocol_and_edits_are_traced():
-    t3 = load_topic("T3")
+    t3 = load_topic("D0")
     llm = ScriptedLLM({"planner": [DRAFT],
                        "coordinator": [{"next": s, "rationale": "r"} for s in STAGES]})
     graph = build_graph(llm, stages={"planner": make_planner(llm, TEMPLATE, topic=t3)},
@@ -86,7 +86,7 @@ def test_approval_shows_seeded_protocol_and_edits_are_traced():
     first = graph.invoke({"question": t3["question"]}, cfg)
     (intr,) = first["__interrupt__"]
     assert intr.value["kind"] == "protocol_approval"
-    assert intr.value["criteria_source"].startswith("topics.yaml T3")
+    assert intr.value["criteria_source"].startswith("topics.yaml D0")
     assert intr.value["protocol"]["inclusion_criteria"] == t3["inclusion_criteria"]
     # The human edits a criterion: the source says so.
     edited = t3["inclusion_criteria"][:-1]

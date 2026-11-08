@@ -1,13 +1,19 @@
 # Evaluation topics (docs/PLAN.md §4b). Each run must use the same question, designs and
 # search window as the gold-standard review, so recall is measured on equal terms.
 # `years` goes into the protocol template (years.start / years.end_date).
-# `--topic T1|T2|T3` (search_smoke, screen_smoke; CLI in Part 9) seeds the protocol with
+# `--topic T1|T2|T3|D0` (sr-review, search_smoke, screen_smoke) seeds the protocol with
 # question, study_designs, years, languages and inclusion/exclusion_criteria from here
 # (sr_pipeline.evaluation.topics), replacing the Planner's draft; criteria_source says so
-# at approval. Seen in Part 6: the Planner wrote "aged 65 or older" for T3, whose review
+# at approval. Seen in Part 6: the Planner wrote "aged 65 or older" for D0, whose review
 # used "over 60", and that criterion alone drove most exclusions.
-# T1 / T2 criteria: to copy from the papers before their runs (Part 10); until then
-# their runs keep the Planner's criteria.
+# Part 10 (2026-11-08): topics revised with the user. T1 = smartwatches (gold review);
+# T2 = new review, no published answer (human labels only, `gold: null`); T3 = embedded
+# ECG review (gold = its 30 embedded implementations); D0 = the old T3, development topic.
+# Engineering topics (T2, T3) add `extraction_fields` ({key: question}, extracted for
+# every study) and `checklist_domains` ([id, name, question]: the review's own
+# risk-of-bias instrument, applied to every study instead of RoB 2 / QUADAS-2 / checklist).
+# A topic's `years` replace the template's: `recent` does not apply, so start is explicit.
+# T1 criteria: to copy from the paper before its run; until then the Planner's are kept.
 
 T1:
   question: How accurate are smartwatches at detecting cardiac arrhythmias?
@@ -18,19 +24,115 @@ T1:
   search_date_source: '"All articles published until February 2021" (month only: last day used)'
   their_databases: [Embase, MEDLINE, Cochrane Library]
 
+
+# Fields of Arredondo-Velazquez 2026, section 2.4 ("extracted verbatim"), used for T2 too.
+_engineering_fields: &engineering_fields
+  dataset: ECG database(s) used (e.g. MIT-BIH, PTB-XL, INCART) and number of records or subjects
+  classes: Classes the model outputs and their number (e.g. AAMI N, S, V, F, Q; normal vs abnormal)
+  partition: >-
+    Evaluation protocol as stated: how data were split between training and test
+    (inter-patient, intra-patient / random beats, patient-specific)
+  model: Model family and topology (e.g. 1D-CNN, LSTM, SVM, spiking network, transformer)
+  operations: Operation count per classification (MACs, OPs or FLOPs, as printed)
+  parameters: Parameter count of the deployed model
+  arithmetic: Arithmetic width of the deployed model (e.g. float32, int8, binary, fixed point)
+  memory: Memory footprint of the deployed model (kB), and peak activation memory if given
+  platform: Target hardware platform and technology (microcontroller, FPGA, ASIC node, SoC, smartphone), as named
+  clock: Clock frequency of the target (MHz)
+  latency: Inference latency or time per classification on the target
+  power_energy: Power consumption and/or energy per classification on the target
+  classification_metrics: >-
+    All classification metrics reported (accuracy, sensitivity, specificity, PPV, F1,
+    per class if given), and whether they are for the deployed variant or the software model
+
+# Risk-of-bias instrument of Arredondo-Velazquez 2026, Table 2 (five domains, scored low /
+# unclear / high), used for T2 too. Our tool scores a domain with no verified quote
+# "unclear", where the review scores some absences "high" (e.g. D1 protocol not stated).
+_ecg_rob_domains: &ecg_rob_domains
+  - [D1, Evaluation protocol stated, "Is the evaluation protocol (how ECG records or subjects were divided between training and test) explicitly stated?"]
+  - [D2, Subjects separated between training and test, "Does the protocol separate subjects between training and test? Low for an inter-patient partition, unclear for a patient-specific one, high otherwise (e.g. intra-patient or random beat split)."]
+  - [D3, Per-class or prevalence-insensitive metric, "Is a per-class or prevalence-insensitive metric reported (e.g. per-class sensitivity and PPV, macro-F1), not only overall accuracy?"]
+  - [D4, Deployed variant evaluated, "Can the classification quality of the variant actually deployed on the device be separated from the best software result?"]
+  - [D5, Model size reported, "Is a parameter count or a memory footprint of the model reported?"]
+
 T2:
-  question: How accurate are large language models at automated title and abstract screening for systematic reviews?
-  review: Kim 2025, J Med Artif Intell 8:34, doi 10.21037/jmai-24-408
-  gold: gold/T2.csv
+  question: >-
+    Which lightweight machine-learning models detect abnormal versus normal ECG on
+    resource-constrained devices (microcontroller, wearable, smartphone, FPGA), and how
+    accurate and efficient are they?
+  review: none (new review; no published systematic review asks this, searched 2026-11-08)
+  gold: null
+  metrics: [extraction_completeness, prisma_consistency, critic, human_labels,
+            screener_agreement, coordinator, time_cost]
   study_designs: []
-  years: {start: null, end_date: 2024-08-31}
-  search_date_source: 'Methods "In July 2024", abstract "August 2024", no day: end of August used'
-  their_databases: [MEDLINE, Embase, Scopus]
+  # Last 5 years: the plan says 2021-11 to now; the protocol window is in years, so 2021.
+  years: {start: 2021, end_date: null}
+  search_date_source: 'no gold review: the run date is the search date'
+  # Our own criteria (user + PLAN §4b), not a review's: to confirm at approval.
+  inclusion_criteria:
+    - {text: Machine-learning model that classifies ECG signals or heartbeats, label: not an ECG classifier}
+    - text: The model separates abnormal from normal ECG (binary output, or abnormal classes reported against normal)
+      label: no abnormal vs normal task
+    - text: Model evaluated for or on a resource-constrained device (microcontroller, wearable, smartphone or FPGA)
+      label: no constrained device
+    - text: At least one efficiency metric reported (model size, memory, latency, power or energy)
+      stage: full_text
+      label: no efficiency metric
+    - {text: Peer-reviewed journal or conference publication, label: not peer reviewed}
+  exclusion_criteria: []
+  extraction_fields: *engineering_fields
+  checklist_name: Five-domain instrument of Arredondo-Velazquez 2026 (Table 2)
+  checklist_domains: *ecg_rob_domains
+  note: >-
+    No gold list: evaluation by human labels on a sample of screening decisions; the gold
+    funnel does not apply. Closest published reviews are broader (Springer 2026 DL
+    arrhythmia ECG/PPG review, 119 studies; JMIR mHealth 2025 scoping review, 19 studies).
+    Doubles as the start of the user's PhD literature review.
 
 T3:
+  question: >-
+    Which machine-learning models classify ECG into several cardiac classes on embedded
+    devices (microcontroller, FPGA, ASIC), and how accurate and efficient are they?
+  review: >-
+    Arredondo-Velazquez 2026, Electronics 15(21):5046, doi 10.3390/electronics15215046
+  gold: gold/T3.csv
+  study_designs: []
+  # Their strings: WoS PY=(2021-2026), Scopus PUBYEAR 2021-2026 (Table 1).
+  years: {start: 2021, end_date: 2026-09-21}
+  search_date_source: '"Searches were completed on 21 September 2026" (section 2.2)'
+  their_databases: [Web of Science, Scopus, IEEE Xplore, PubMed, ScienceDirect]
+  # Sections 2.3-2.4, implementation corpus only (their algorithmic corpus, 24 studies
+  # without an implementation, is not in our gold). Title/abstract: three questions
+  # (ECG classifier; embedded implementation; peer-reviewed). Full text: first reason to
+  # apply, in order: no embedded target; no execution cost metric; not peer reviewed.
+  inclusion_criteria:
+    - {text: ECG or heartbeat classifier, label: not an ECG classifier}
+    - text: Classifier executed or synthesized for a physical embedded target (microcontroller, FPGA, ASIC or SoC)
+      label: no embedded implementation
+    - text: At least one execution cost metric reported (latency, memory footprint, resource utilization, power or energy)
+      stage: full_text
+      label: no execution cost metric
+    - {text: Peer-reviewed journal or conference publication, label: not peer reviewed}
+  exclusion_criteria: []
+  extraction_fields: *engineering_fields
+  checklist_name: Five-domain instrument of Arredondo-Velazquez 2026 (Table 2)
+  checklist_domains: *ecg_rob_domains
+  note: >-
+    Gold = the 30 implementations of Table 2 (refs 27-56, the same 30 as Table 5); 3 of
+    them are older than the window (Raj 2018, Wu 2019, Saadatnejad 2020: "earlier works
+    retained if they establish protocols still in use"): report recall with and without
+    them. Their screening read only the first 100 records of each interface by relevance
+    (498 screened of 2,622) plus 10 reports by citation chasing, so their list is not
+    exhaustive. Their criteria do not require several classes (e.g. ref 37 ventricular
+    ectopic beats, ref 55 anomaly detection), so the question's "several cardiac classes"
+    is not a criterion here. IEEE Xplore is not one of our sources.
+
+# Development topic (old T3): tuned on in Parts 4-6d, not part of the held-out evaluation.
+# Its run 20261108-091009-f03123 was made as "T3": evaluate it with `--topic D0`.
+D0:
   question: Does exercise reduce depressive symptoms in older adults?
   review: Li 2024, Front Psychol 15:1484172, PMC11427357
-  gold: gold/T3.csv
+  gold: gold/D0.csv
   study_designs: [randomized controlled trial]
   # Part 8: direction of effect (GDS, BDI, PHQ-9: a lower score = fewer symptoms).
   outcome_directions: {depressive symptoms: lower}

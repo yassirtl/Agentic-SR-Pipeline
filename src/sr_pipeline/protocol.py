@@ -61,6 +61,15 @@ class OutcomeDirection(BaseModel):
                     "depends on the instrument.")
 
 
+class ChecklistDomain(BaseModel):
+    """Part 10: one domain of a review's own risk-of-bias instrument (e.g. the five domains
+    of the embedded-ECG review), used instead of the generic 5-item checklist."""
+
+    id: str
+    name: str
+    question: str
+
+
 LABEL_MAX_WORDS = 5
 
 
@@ -173,6 +182,12 @@ class Protocol(ProtocolDraft):
     # Scope, from the template (Part 8b): never drafted by the LLM.
     direction_metric_order: list[DirectionMetric] = Field(
         default_factory=lambda: list(DEFAULT_METRIC_ORDER))
+    # Part 10, from an evaluation topic: extra fields to extract ({key: question}, e.g.
+    # latency, parameter count) and the review's own risk-of-bias domains. When domains
+    # are given, every study is assessed with them (as the review did), whatever its design.
+    extraction_fields: dict[str, str] = Field(default_factory=dict)
+    checklist_name: str = ""
+    checklist_domains: list[ChecklistDomain] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _tags_follow_criteria(self):
