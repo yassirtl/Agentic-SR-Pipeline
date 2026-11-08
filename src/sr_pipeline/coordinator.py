@@ -32,7 +32,10 @@ def summarize_state(state: ReviewState) -> str:
         f"Steps taken: {state.get('steps_taken', 0)}",
         f"Stages run (in order): {', '.join(completed) or 'none'}",
         f"Fresh stages: {', '.join(fresh_stages(completed)) or 'none'}",
-        "Counts: " + ", ".join(f"{f}={len(state.get(f, []))}" for f in LIST_FIELDS),
+        # Only fields already filled: a bare 0 for a stage that has not run was read by
+        # the LLM as "that stage found nothing" (first real runs, 2026-11-08).
+        "Counts (filled so far): " + (", ".join(
+            f"{f}={len(state.get(f, []))}" for f in LIST_FIELDS if state.get(f)) or "none"),
     ]
     search = describe_search(state)
     if search:
@@ -76,6 +79,10 @@ def research_rule(proposed: str, state: ReviewState) -> str | None:
         return None
     if not is_fresh("retrieval", completed):
         return "search strategy already built: run retrieval on it before searching again"
+    ta = state.get("prisma_counts", {}).get("title_abstract") or {}
+    if is_fresh("ta_screening", completed) and ta.get("included", 0) > 0:
+        return (f"title/abstract screening included {ta['included']} records: "
+                "no reason to search again")
     if runs > MAX_RESEARCHES:
         return f"re-search budget spent ({runs - 1}/{MAX_RESEARCHES})"
     return None

@@ -138,3 +138,20 @@ def test_research_budget_is_capped():
 def test_summary_says_retrieval_not_run_yet():
     text = summarize_state({"question": "Q", "completed_stages": ["planner", "search_strategy"]})
     assert "Retrieval: not run yet" in text
+
+
+def test_no_research_after_screening_included_records():
+    # Second real run: "included=0" (filled only after full text) read as "nothing kept".
+    from sr_pipeline.coordinator import research_rule
+    done = ["planner", "search_strategy", "retrieval", "ta_screening"]
+    state = {"completed_stages": done,
+             "prisma_counts": {"title_abstract": {"included": 38}}}
+    assert "included 38" in research_rule("search_strategy", state)
+    state["prisma_counts"]["title_abstract"]["included"] = 0
+    assert research_rule("search_strategy", state) is None
+
+
+def test_summary_hides_unfilled_counts():
+    text = summarize_state({"question": "Q", "completed_stages": ["planner"],
+                            "records": [{"title": "t"}]})
+    assert "records=1" in text and "included=" not in text
