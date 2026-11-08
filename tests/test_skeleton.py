@@ -91,15 +91,33 @@ def test_critic_loop_reruns_critic_before_report():
 # --- (d) step budget ---------------------------------------------------------
 
 def test_step_budget_ends_the_run():
-    # A coordinator stuck in a loop: always proposes planner (always legal).
-    llm = coord(*["planner"] * (MAX_STEPS + 5))
-    _, final = run(llm)  # default MAX_STEPS and recursion_limit must fit together
+    # The budget still ends a run that never reaches report (here: a small budget).
+    llm = coord(*STAGES)
+    _, final = run(llm, max_steps=3)
 
-    assert final["steps_taken"] == MAX_STEPS
-    assert final["completed_stages"] == ["planner"] * MAX_STEPS
-    assert "report" not in final["completed_stages"]
+    assert final["steps_taken"] == 3
+    assert final["completed_stages"] == list(STAGES[:3])
     assert final["audit_log"][-1]["event"] == "budget exhausted"
-    assert len(llm.calls) == MAX_STEPS  # no LLM call once the budget is spent
+    assert len(llm.calls) == 3  # no LLM call once the budget is spent
+
+
+def test_stuck_coordinator_still_finishes_the_review():
+    # Always proposing planner was a loop up to the budget; now every re-run of a fresh
+    # stage is refused and the earliest stale stage runs instead (real run, 2026-11-08).
+    llm = coord(*["planner"] * (MAX_STEPS + 5))
+    _, final = run(llm)
+
+    assert final["completed_stages"] == list(STAGES)
+    refused = [e for e in coordinator_entries(final) if e["outcome"] == "refused"]
+    assert all("already up to date" in e["reason"] for e in refused[1:])
+
+
+def test_fresh_stage_rerun_is_refused():
+    from sr_pipeline.coordinator import rerun_rule
+    done = ["planner", "search_strategy", "retrieval", "ta_screening", "ft_screening"]
+    assert "already up to date" in rerun_rule("ta_screening", {"completed_stages": done})
+    assert rerun_rule("extraction", {"completed_stages": done}) is None
+    assert rerun_rule("search_strategy", {"completed_stages": done}) is None  # own rule
 
 
 # --- coordinator input -----------------------------------------------------

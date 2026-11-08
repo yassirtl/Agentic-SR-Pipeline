@@ -88,6 +88,22 @@ def research_rule(proposed: str, state: ReviewState) -> str | None:
     return None
 
 
+RERUN_ALLOWED = ("search_strategy", "synthesis")  # own rules: research_rule, loop_rule
+
+
+def rerun_rule(proposed: str, state: ReviewState) -> str | None:
+    """Code rule against no-op re-runs (first real run, 2026-11-08: after full text the
+    coordinator re-ran title/abstract screening "for the records not screened", which the
+    screening limit leaves out by design). A stage that is still fresh has unchanged
+    inputs, so re-running it gives the same result: refused. Re-searching and the critic
+    loop have their own rules."""
+    if proposed in RERUN_ALLOWED:
+        return None
+    if is_fresh(proposed, state.get("completed_stages", [])):
+        return f"{proposed} is already up to date: its inputs have not changed"
+    return None
+
+
 def build_prompt(state: ReviewState) -> str:
     table = "\n".join(f"- {s}: needs {', '.join(PREREQUISITES[s]) or 'nothing'}" for s in STAGES)
     return (
@@ -126,7 +142,8 @@ def coordinator_step(state: ReviewState, llm: LLM, max_steps: int = MAX_STEPS) -
         return {"next_stage": stage, "steps_taken": steps + 1, "audit_log": [entry]}
 
     stage, reason = check_move(decision.next, completed)
-    if reason is None and (rule := loop_rule(stage, state) or research_rule(stage, state)):
+    if reason is None and (rule := loop_rule(stage, state) or research_rule(stage, state)
+                                          or rerun_rule(stage, state)):
         stage, reason = earliest_stale(completed) or "report", rule
 
     entry = {"node": "coordinator", "step": steps + 1, "proposed": decision.next,
