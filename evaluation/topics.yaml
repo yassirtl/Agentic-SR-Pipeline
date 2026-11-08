@@ -13,7 +13,7 @@
 # every study) and `checklist_domains` ([id, name, question]: the review's own
 # risk-of-bias instrument, applied to every study instead of RoB 2 / QUADAS-2 / checklist).
 # A topic's `years` replace the template's: `recent` does not apply, so start is explicit.
-# T1 criteria: to copy from the paper before its run; until then the Planner's are kept.
+# T1 criteria: copied from Nazarian 2021 (Methods) on 2026-11-08, before any T1 run.
 # Extraction completeness (Part 10): when a topic sets extraction_fields (T2, T3), only
 # those fields count; the generic clinical fields are reported apart (all_fields).
 
@@ -22,9 +22,49 @@ T1:
   review: Nazarian 2021, J Med Internet Res 23(8):e28974, PMC8433941
   gold: gold/T1.csv
   study_designs: []
-  years: {start: null, end_date: 2021-02-28}
+  # start 2001: their exclusion "studies >20 years" applied by the search window.
+  years: {start: 2001, end_date: 2021-02-28}
   search_date_source: '"All articles published until February 2021" (month only: last day used)'
   their_databases: [Embase, MEDLINE, Cochrane Library]
+  # Nazarian 2021, Methods "Inclusion and Exclusion Criteria" (copied 2026-11-08, before
+  # any T1 run). Their inclusion 1 is split in two, as their own full-text exclusion
+  # reasons were "wrong intervention" (no smartwatch) and "wrong outcomes" (no arrhythmia
+  # detection or no diagnostic accuracy). Mapped, not listed, see `note`: English (the
+  # template's `languages: [English]`), ">20 years" (years.start), "no original data" (the
+  # D criterion every protocol has), "without adequate data to calculate ..." (I3).
+  inclusion_criteria:
+    - text: Studies reporting detection of cardiac arrhythmias using smartwatches (smartwatch or wrist-worn device)
+      label: no smartwatch
+      evidence_terms: [smartwatch, smart watch, watch, wristband, wrist, wrist-worn,
+                       wearable, Apple, Samsung, Galaxy, Huawei, Huami, Amazfit, Empatica,
+                       Fitbit, Garmin, Wavelet]
+    - text: Studies reporting detection of cardiac arrhythmias using smartwatches (detection of an arrhythmia)
+      label: no arrhythmia detection
+      evidence_terms: [arrhythmia, atrial fibrillation, AF, AFib, fibrillation, flutter,
+                       bradycardia, tachycardia, bradyarrhythmia, tachyarrhythmia,
+                       premature, ectopic, irregular, rhythm]
+    - text: Studies reporting sensitivity, specificity and diagnostic accuracy, or with adequate information to calculate these data
+      stage: full_text
+      label: no diagnostic accuracy data
+      evidence_terms: [sensitivity, specificity, accuracy, PPV, NPV, predictive value, AUC,
+                       true positive, false positive, true negative, false negative,
+                       confusion matrix]
+  exclusion_criteria: []
+  note: >-
+    Their criteria, verbatim. Inclusion: "studies reporting detection of cardiac
+    arrhythmias using smartwatches; studies reporting sensitivity, specificity and
+    diagnostic accuracy; or studies with adequate information to calculate these data; and
+    studies published or translated into English". Exclusion: "studies with no original
+    data present (eg, review article, letter); studies with no full text available;
+    studies >20 years; and studies without adequate data to calculate sensitivity,
+    specificity and diagnostic accuracy data". Not screening criteria here: English and
+    >20 years are applied by the search (languages, years.start 2001; the common rule
+    says year/language never decide, and an inclusion criterion left unclear at full text
+    would become an exclusion by the Part 10b absence rule); no original data = D; the
+    last exclusion = I3 reversed (listing both would split one reason in two); "no full
+    text available" is about the reviewers' access, not the study (we screen
+    abstract-only records and flag them; their gold includes a conference abstract,
+    Rajakariar 2019). Gold: 18 studies 2017-2021, all in English, all inside 2001-2021.
 
 
 # Fields of Arredondo-Velazquez 2026, section 2.4 ("extracted verbatim"), used for T2 too.
@@ -75,10 +115,13 @@ _efficiency_evidence: &efficiency_evidence
   [parameter, memory, kB, MB, KB, kilobyte, megabyte, RAM, flash, footprint, model size,
    latency, inference time, execution time, runtime, ms, millisecond, power, energy, mW,
    mJ, nJ, watt, joule, MAC, MACs, FLOPs, FLOP, OPs, throughput, compression, cycles]
+# T3 setting block = the review's implementation facet, verbatim (Table 1, same 7 terms in
+# all 5 interfaces except ScienceDirect's reduced string). Aligned 2026-11-08: our draft
+# had `hardware accelerator` (theirs: bare `accelerator`) and 8 extra terms (MCU, SoC,
+# system on chip, VLSI, hardware implementation, edge device, low-power, on-chip), dropped
+# so a gold study the search misses is not due to a different query.
 _embedded_terms: &embedded_terms
-  [microcontroller, MCU, embedded, FPGA, ASIC, SoC, system on chip, VLSI,
-   hardware implementation, hardware accelerator, TinyML, edge device, edge computing,
-   low-power, low power, on-chip]
+  [embedded, microcontroller, FPGA, ASIC, accelerator, edge computing, TinyML]
 _embedded_evidence: &embedded_evidence
   [microcontroller, MCU, embedded, FPGA, ASIC, SoC, system on chip, chip, VLSI, CMOS, nm,
    hardware, synthesized, synthesised, Raspberry Pi, Arduino, STM32, ESP32, Cortex, nRF,
@@ -165,7 +208,12 @@ T3:
     exhaustive. Their criteria do not require several classes (e.g. ref 37 ventricular
     ectopic beats, ref 55 anomaly detection), so the question was aligned with their
     scope on 2026-11-08 (user decision: "into several cardiac classes" dropped, SoC added
-    as in their criterion). IEEE Xplore is not one of our sources.
+    as in their criterion). IEEE Xplore is not one of our sources. Search: their three
+    facets (Table 1) are signal (ECG, electrocardiogram, arrhythmia, heartbeat) AND model
+    (classification, neural network, machine learning, convolutional, transformer,
+    recurrent, support vector machine, spiking) AND implementation (the setting block
+    above); no outcome facet. Their criterion names SoC, their string does not. Records:
+    WoS 636, Scopus 1,226, IEEE Xplore 493, PubMed 169, ScienceDirect 98 (2,622).
 
 # Development topic (old T3): tuned on in Parts 4-6d, not part of the held-out evaluation.
 # Its run 20261108-091009-f03123 was made as "T3": evaluate it with `--topic D0`.

@@ -58,7 +58,9 @@ def test_topic_seeds_question_criteria_dates_and_designs():
 
 
 def test_topic_without_criteria_keeps_the_planners_and_says_so():
-    t1 = load_topic("T1")
+    # T1 has criteria since 2026-11-08: drop them to keep testing the no-criteria path.
+    t1 = {k: v for k, v in load_topic("T1").items()
+          if k not in ("inclusion_criteria", "exclusion_criteria")}
     p, audit = seed_protocol({"question": "q", **DRAFT}, t1)
     assert p["inclusion_criteria"] == DRAFT["inclusion_criteria"]
     assert p["criteria_source"] == "Planner (LLM draft); topics.yaml T1 has no criteria"
