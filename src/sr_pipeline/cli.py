@@ -38,6 +38,7 @@ from .audit import AuditWriter, new_run_id
 from .config import Config, load_config
 from .evaluation.topics import load_topic
 from .graph import run_config
+from .llm import api_error_message
 from .pipeline import agent_models, build_review_graph
 from .reporting import make_report
 
@@ -58,6 +59,9 @@ def _protocol_text(payload: dict) -> str:
         f"Intervention: {pico.get('intervention')}",
         f"Comparator:   {pico.get('comparator')}",
         f"Outcomes:     {'; '.join(pico.get('outcomes') or [])}",
+        *([f"Setting:      {pico['setting']}"] if pico.get("setting") else []),
+        *([f"Search block fixed by the topic ({role}): {', '.join(terms) or 'none'}"
+           for role, terms in (p.get("search_terms") or {}).items()]),
         f"Designs:      {', '.join(p.get('study_designs') or []) or 'no restriction'}",
         f"Databases:    {', '.join(p.get('databases') or [])}",
         f"Years:        {p.get('years')}   Languages: {p.get('languages')}",
@@ -138,16 +142,38 @@ def compact_checkpoints(run_dir: Path, checkpoint_id: str) -> None:
     con.close()
 
 
+def progress_line(node: str, update) -> str | None:
+    """Part 10b: one line when a node finishes (the coordinator is silent: one line per
+    stage), from the node's last audit entry: event, a few counts, cost."""
+    if node in ("coordinator", "__interrupt__") or not isinstance(update, dict):
+        return None
+    entries = update.get("audit_log") or []
+    entry = entries[-1] if entries else {}
+    bits = [entry.get("event") or "done"]
+    for key, label in (("records_screened", "screened"), ("included", "included"),
+                       ("studies_included", "included"), ("records_excluded", "excluded"),
+                       ("reports_excluded", "excluded"), ("unique", "unique records")):
+        if isinstance(entry.get(key), int):
+            bits.append(f"{entry[key]} {label}")
+    if isinstance(entry.get("cost_usd"), (int, float)):
+        bits.append(f"${entry['cost_usd']:.4f}")
+    return f"[{datetime.now():%H:%M:%S}] {node}: {', '.join(bits)}"
+
+
 def drive(graph, config: dict, first, audit: AuditWriter, ask: Ask, out=print) -> dict:
-    """Invoke, answer every interrupt, sync the audit after each pause. Returns the state."""
-    result = graph.invoke(first, config)
+    """Stream the graph (one progress line per finished stage), answer every interrupt,
+    sync the audit after each pause. Returns the state."""
+    payload = first
     while True:
-        audit.sync(graph.get_state(config).values.get("audit_log", []))
-        pending = result.get("__interrupt__") if isinstance(result, dict) else None
-        if not pending:
-            return graph.get_state(config).values
-        answer = answer_interrupt(pending[0].value, ask, out)
-        result = graph.invoke(Command(resume=answer), config)
+        for chunk in graph.stream(payload, config, stream_mode="updates"):
+            for node, update in chunk.items():
+                if (line := progress_line(node, update)):
+                    out(line)
+        snap = graph.get_state(config)
+        audit.sync(snap.values.get("audit_log", []))
+        if not snap.interrupts:
+            return snap.values
+        payload = Command(resume=answer_interrupt(snap.interrupts[0].value, ask, out))
 
 
 def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
@@ -196,7 +222,11 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
         first = {"question": question,
                  "run": {"run_id": run_id, "started_at": meta["started_at"]}}
         out(f"Run {run_id}: {question}\nOutputs in {run_dir}")
-    state = drive(graph, config, first, audit, ask, out)
+    try:
+        state = drive(graph, config, first, audit, ask, out)
+    except BaseException as exc:
+        exc.run_id = run_id  # for main()'s message: "then sr-review --resume <run_id>"
+        raise
     (run_dir / "state.json").write_text(json.dumps(state, indent=2, default=str))
     snap = graph.get_state(config)
     if state.get("report") and not snap.next:
@@ -304,10 +334,18 @@ def main(argv: list[str] | None = None) -> int:
     try:
         run_id, state = run(cfg, question=args.question, topic_id=args.topic,
                             auto=args.auto, resume=args.resume, screen_limit=args.limit)
-    except KeyboardInterrupt:
-        print("\nStopped. Continue later with: sr-review --resume <run_id> "
-              "(the last finished step is checkpointed)", file=sys.stderr)
+    except KeyboardInterrupt as exc:
+        print(f"\nStopped. Continue later with: sr-review --resume "
+              f"{getattr(exc, 'run_id', '<run_id>')} (the last finished step is "
+              "checkpointed)", file=sys.stderr)
         return 130
+    except Exception as exc:
+        # Part 10b: an API error (no credits, refused key...) is one line, not a traceback.
+        if (msg := api_error_message(exc)) is None:
+            raise
+        print(f"{msg}, then: sr-review --resume {getattr(exc, 'run_id', '<run_id>')}",
+              file=sys.stderr)
+        return 1
     _final_message(run_id, state)
     return 0
 

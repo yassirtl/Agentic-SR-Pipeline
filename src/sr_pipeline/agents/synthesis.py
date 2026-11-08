@@ -58,7 +58,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from ..forest import forest_plot, paired_forest
-from ..llm import LLM
+from ..llm import LLM, is_fatal
 from ..meta import ci, dersimonian_laird, hedges_g, pooled_proportion, sign_test, wilson
 from ..protocol import DEFAULT_METRIC_ORDER, better_direction, metric_order
 from ..state import ReviewState, latest, stage_round
@@ -853,6 +853,8 @@ def make_synthesis(llm: LLM, *, out_dir: str | Path, min_pool: int = MIN_POOL):
                   "studies": h.studies} for h in ans.heterogeneity],
                 labels, evidence, sections[:-1])
         except Exception as exc:  # never crash the run: the critic will see no text
+            if is_fatal(exc):
+                raise
             flags.append(f"llm_error: {type(exc).__name__}: {exc}"[:300])
             sentences, heterogeneity = [], []
         checks = Counter(f.split(":")[0] for s in [*sentences, *heterogeneity]

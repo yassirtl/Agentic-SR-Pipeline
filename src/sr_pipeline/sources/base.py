@@ -87,7 +87,8 @@ class Concept(BaseModel):
     """
 
     name: str = Field(description="Short label, e.g. 'population: older adults'.")
-    role: Literal["population", "intervention", "outcome", "design", "other"] = Field(
+    role: Literal["population", "intervention", "setting", "outcome", "design",
+                  "other"] = Field(
         "other", description="Which part of the question this block searches.")
     keywords: list[str] = Field(
         min_length=1,

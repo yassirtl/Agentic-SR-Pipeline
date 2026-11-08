@@ -75,6 +75,25 @@ let a network meta-analysis and a trial protocol through.
   exclusion may in fact apply: a record wrongly kept is caught later, one wrongly
   excluded is lost (recall over precision).
 
+**Engineering-topic checks** (Part 10b, bug fixes after the freeze, from the T2 run: 75 of
+100 included, "yes" verdicts whose quotes did not support them). Code only, no prompt
+change:
+- **evidence terms**: a criterion may carry words a supporting quote must contain
+  (``protocol['criterion_evidence']``, from topics.yaml or the Planner). A 'yes' whose quote
+  contains none of them (whole words, plural allowed) is ``unclear`` (flag
+  ``no_evidence_term_*``). Seen: I3 "evaluated on a constrained device" answered yes quoting
+  "we applied the MIT-BIH dataset"; I4 "efficiency metric" yes quoting "accuracy,
+  precision, recall". Only the words are checked, not whether the quote is in the text;
+- **absence at full text**: with the full text available (mode ``ft``, never
+  ``ft_abstract``), an inclusion criterion still ``unclear`` after the checks is not met
+  (``met: no``, ``absence: True``, flag ``ft_absence_*``): the full paper does not show it.
+  Peer-review criteria are exempt (a paper's text rarely states its venue; the arXiv rule
+  covers preprints). "Full paper" means the passages retrieved for that criterion (the
+  evidence terms are added to the retrieval query), a limit to report;
+- **arXiv rule**: a DOI starting with 10.48550 (arXiv) fails the peer-review inclusion
+  criterion, when the protocol has one, before any LLM call (``resolved_by: arxiv_rule``;
+  an automation tool in PRISMA, like the title rule).
+
 Agreement between A and B is measured with Cohen's kappa (records decided by the title
 rule have no A / B pair and are not counted).
 
@@ -107,7 +126,7 @@ from typing import Literal
 from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
-from ..llm import LLM, Usage
+from ..llm import LLM, Usage, is_fatal
 from ..rag import HybridIndex, chunk_paper, rerank
 from ..sources.fulltext import fetch_fulltexts
 from ..state import ReviewState, latest, stage_round
@@ -210,9 +229,46 @@ def deferred_at_ta(protocol: dict) -> set[str]:
 
 
 def criterion_query(protocol: dict, cid: str, text: str) -> str:
-    """Text used to judge (and, at full text, to retrieve passages for) a criterion."""
+    """Text used to retrieve (and re-rank) full-text passages for a criterion. Part 10b:
+    with the criterion's evidence terms, so the passages that could show it are found
+    before its absence is concluded."""
     test = (protocol.get("criterion_tests") or {}).get(text)
-    return f"{cid}: {text}" + (f" ({test})" if test else "")
+    terms = _evidence_by_text(protocol).get(text)
+    return (f"{cid}: {text}" + (f" ({test})" if test else "")
+            + (f" [{', '.join(terms)}]" if terms else ""))
+
+
+def _evidence_by_text(protocol: dict) -> dict[str, list[str]]:
+    return {e["criterion"]: list(e["terms"]) for e in protocol.get("criterion_evidence") or []
+            if e.get("terms")}
+
+
+def evidence_terms(protocol: dict) -> dict[str, list[str]]:
+    """Part 10b: criterion id -> words a quote must contain for a 'yes' to count."""
+    by_text = _evidence_by_text(protocol)
+    return {cid: by_text[text] for cid, text in criteria(protocol) if text in by_text}
+
+
+PEER_REVIEW = re.compile(r"peer.?review", re.I)
+
+
+def peer_review_criterion(protocol: dict) -> str | None:
+    """Id of the first inclusion criterion about peer review, if any."""
+    return next((cid for cid, text in criteria(protocol)
+                 if cid.startswith("I") and PEER_REVIEW.search(text)), None)
+
+
+ARXIV_DOI = "10.48550/"
+
+
+def arxiv_rule(protocol: dict, paper: dict) -> str | None:
+    """Part 10b: the peer-review criterion id when the record is an arXiv preprint (DOI
+    10.48550/...) and the protocol requires peer review; else None."""
+    doi = (paper.get("doi") or "").strip().lower()
+    doi = re.sub(r"^(https?://(dx\.)?doi\.org/|doi:)", "", doi)
+    if not doi.startswith(ARXIV_DOI):
+        return None
+    return peer_review_criterion(protocol)
 
 
 def protocol_block(protocol: dict) -> str:
@@ -487,6 +543,22 @@ def eligibility_sentence(quote: str, text: str) -> str | None:
     return None
 
 
+def term_pattern(terms: list[str]) -> re.Pattern | None:
+    """Whole words on normalised text, plural allowed: 'FPGA' matches 'FPGAs', '128 kB'
+    and '128kB'; 'edge' does not match 'knowledge', 'SoC' not 'social', 'power' not
+    'powerful'."""
+    alts = sorted({n for n in (_norm(t) for t in terms) if n}, key=len, reverse=True)
+    if not alts:
+        return None
+    return re.compile(r"(?<![a-z])(?:" + "|".join(re.escape(a) for a in alts)
+                      + r")(?:e?s)?(?![a-z])")
+
+
+def has_evidence_term(quote: str, terms: list[str]) -> bool:
+    pattern = term_pattern(terms)
+    return pattern is None or bool(pattern.search(_norm(quote or "")))
+
+
 def design_words(protocol: dict) -> re.Pattern | None:
     """Words that name one of the listed designs (None: no design restriction)."""
     words = []
@@ -499,7 +571,9 @@ def design_words(protocol: dict) -> re.Pattern | None:
 
 
 def check_verdicts(raw: list[dict], crit_ids: list[str], text: str, who: str,
-                   design_re: re.Pattern | None = None, deferred: set[str] = frozenset()
+                   design_re: re.Pattern | None = None, deferred: set[str] = frozenset(),
+                   *, evidence: Mapping[str, list[str]] | None = None,
+                   absence: set[str] = frozenset()
                    ) -> tuple[list[dict], list[str]]:
     """Verdicts in criterion order, checked by code. A criterion the LLM skipped is
     'unclear'; a failure whose quote is empty or not in the text is downgraded to
@@ -509,7 +583,13 @@ def check_verdicts(raw: list[dict], crit_ids: list[str], text: str, who: str,
     eligibility sentence (flag ``eligibility_quote_<who>_<criterion>``). Each verdict gets ``verified``: a non-empty quote
     found in the text. Criteria in ``deferred`` (full-text-only, at title/abstract) are
     forced to 'unclear' with ``deferred: True``; the model's answer stays in
-    ``met_claimed``."""
+    ``met_claimed``.
+
+    Part 10b: a 'yes' on a criterion of ``evidence`` whose quote has none of its terms is
+    'unclear' (flag ``no_evidence_term_<who>_<criterion>``); then each criterion of
+    ``absence`` (inclusion criteria at full text, full text available) still 'unclear' is
+    'no' with ``absence: True`` (flag ``ft_absence_<who>_<criterion>``)."""
+    evidence = evidence or {}
     by_id: dict[str, dict] = {}
     for v in raw:
         cid = (v.get("criterion") or "").strip().upper()
@@ -545,7 +625,16 @@ def check_verdicts(raw: list[dict], crit_ids: list[str], text: str, who: str,
               and design_re.search(quote) and not NON_PRIMARY_WORDS.search(quote)):
             flags.append(f"contradicting_quote_{who}_D")
             item["met_claimed"], item["met"] = v["met"], "unclear"
+        elif (v["met"] == "yes" and cid in evidence
+              and not has_evidence_term(quote, evidence[cid])):
+            flags.append(f"no_evidence_term_{who}_{cid}")
+            item["met_claimed"], item["met"] = v["met"], "unclear"
         out.append(item)
+    for item in out:
+        if item["criterion"] in absence and item["met"] == "unclear":
+            item.setdefault("met_claimed", "unclear")
+            item["met"], item["absence"] = "no", True
+            flags.append(f"ft_absence_{who}_{item['criterion']}")
     return out, flags
 
 
@@ -556,7 +645,8 @@ def decide(verdicts: list[dict], rule: str) -> dict:
     for v in verdicts:
         if fails(v["criterion"], v["met"]):
             return {"decision": "exclude", "criterion": v["criterion"], "quote": v["quote"],
-                    "chunk_id": v["chunk_id"], "missing_info": False}
+                    "chunk_id": v["chunk_id"], "missing_info": False,
+                    "absence": bool(v.get("absence"))}
     if rule == "strict":
         for v in verdicts:
             if (not v["criterion"].startswith("E") and v["met"] == "unclear"
@@ -568,10 +658,12 @@ def decide(verdicts: list[dict], rule: str) -> dict:
 
 
 def _opinion_item(answer, crit_ids: list[str], text: str, who: str, rule: str,
-                  design_re: re.Pattern | None = None, deferred: set[str] = frozenset()
-                  ) -> tuple[dict, list[str]]:
+                  design_re: re.Pattern | None = None, deferred: set[str] = frozenset(),
+                  evidence: Mapping[str, list[str]] | None = None,
+                  absence: set[str] = frozenset()) -> tuple[dict, list[str]]:
     verdicts, flags = check_verdicts([v.model_dump() for v in answer.verdicts], crit_ids,
-                                     text, who, design_re, deferred)
+                                     text, who, design_re, deferred, evidence=evidence,
+                                     absence=absence)
     return {"comparison": answer.comparison, "verdicts": verdicts, "reason": answer.reason,
             **decide(verdicts, rule)}, flags
 
@@ -599,11 +691,22 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
         item.update(final="exclude", resolved_by="d_title_rule", criterion="D",
                     quote=paper.get("title"), title_words=words)
         return item, []
+    if (peer := arxiv_rule(protocol, paper)):
+        # Part 10b: an arXiv preprint fails the peer-review criterion (no LLM call).
+        item["flags"].append("arxiv_rule")
+        item.update(final="exclude", resolved_by="arxiv_rule", criterion=peer,
+                    quote=paper.get("doi"))
+        return item, []
     usages: list[Usage] = []
     text = evidence  # quotes must come from what the screener was shown
     crit_ids = [cid for cid, _ in criteria(protocol)]
     design_re = design_words(protocol)
     deferred = deferred_at_ta(protocol) if mode == "ta" else set()
+    ev_terms = evidence_terms(protocol)
+    # Part 10b: with the full text, an inclusion criterion it does not show is not met.
+    absence = ({cid for cid, t in criteria(protocol)
+                if cid.startswith("I") and not PEER_REVIEW.search(t)}
+               if mode == "ft" else set())
     # Without a full text nobody can see what the abstract omits: A does not exclude on it.
     rule_a = "lenient" if mode == "ft_abstract" else "strict"
     try:
@@ -614,7 +717,7 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
                                                         stage=mode), agent=agent)
             usages.append(u)
             item[key], flags = _opinion_item(d, crit_ids, text, key, rule, design_re,
-                                             deferred)
+                                             deferred, ev_terms, absence)
             item["flags"] += flags
         agree = item["a"]["decision"] == item["b"]["decision"]
         if agree and item["a"]["decision"] == "exclude" and not (
@@ -639,7 +742,8 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
                                          agent="adjudicator")
             usages.append(u)
             item["adjudicator"], flags = _opinion_item(adj, crit_ids, text, "adjudicator",
-                                                       "lenient", design_re, deferred)
+                                                       "lenient", design_re, deferred,
+                                                       ev_terms, absence)
             item["adjudicator"]["unresolved"] = adj.unresolved
             item["flags"] += flags
             d = item["adjudicator"]
@@ -655,6 +759,8 @@ def screen_record(llm: LLM, protocol: dict, paper: dict, evidence: str, *, stage
                 final, by, criterion = "exclude", "design_guard", "D"
                 item["guard_quote"] = guard
     except Exception as exc:  # LLM / validation / network error after retries
+        if is_fatal(exc):  # no credits / bad key: stop the run, do not mark 100 unresolved
+            raise
         item["flags"].append(f"llm_error: {type(exc).__name__}: {exc}"[:300])
         final, by, criterion = "unresolved", "pending", None
     item["final"], item["resolved_by"], item["criterion"] = final, by, criterion
@@ -676,7 +782,10 @@ def _design_guard(item: dict) -> str | None:
 
 
 def _evidence(decision: dict, text: str) -> bool:
-    """A non-empty quote that really is in the text."""
+    """A non-empty quote that really is in the text, or (Part 10b) an exclusion on a
+    criterion the full text does not show (absence is the evidence)."""
+    if decision.get("absence"):
+        return True
     return bool((decision.get("quote") or "").strip()) and quote_found(decision["quote"], text)
 
 
@@ -717,6 +826,9 @@ def _agreement(decisions: list[dict]) -> dict:
             "kappa": cohen_kappa(a, b)}
 
 
+AUTOMATION = ("d_title_rule", "arxiv_rule")  # code rules decided before any LLM call
+
+
 def ta_counts(decisions: list[dict]) -> dict:
     final = Counter(d["final"] for d in decisions)
     return {
@@ -733,6 +845,15 @@ def ta_counts(decisions: list[dict]) -> dict:
         "llm_errors": sum(any(f.startswith("llm_error") for f in d["flags"])
                           for d in decisions),
         "title_rule": sum("d_title_rule" in d["flags"] for d in decisions),
+        "arxiv_rule": sum("arxiv_rule" in d["flags"] for d in decisions),
+        # PRISMA "marked as ineligible by automation tools", per deciding criterion.
+        "automation_by_criterion": dict(Counter(d["criterion"] for d in decisions
+                                                if d["final"] == "exclude"
+                                                and d.get("resolved_by") in AUTOMATION)),
+        "evidence_term_downgrades": sum(any(f.startswith("no_evidence_term") for f in
+                                            d["flags"]) for d in decisions),
+        "ft_absence": sum(any(f.startswith("ft_absence") for f in d["flags"])
+                          for d in decisions),
         "eligibility_quotes": sum(any(f.startswith("eligibility_quote") for f in d["flags"])
                                   for d in decisions),
         **_agreement(decisions),
@@ -759,6 +880,9 @@ def ft_counts(decisions: list[dict]) -> dict:
         "quotes_not_found": base["quotes_not_found"],
         "llm_errors": base["llm_errors"],
         "title_rule": base["title_rule"], "eligibility_quotes": base["eligibility_quotes"],
+        "arxiv_rule": base["arxiv_rule"],
+        "evidence_term_downgrades": base["evidence_term_downgrades"],
+        "ft_absence": base["ft_absence"],
         "pairs": base["pairs"], "agreement": base["agreement"], "kappa": base["kappa"],
     }
 

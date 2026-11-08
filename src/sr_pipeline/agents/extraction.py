@@ -89,7 +89,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from ..llm import LLM, Usage
+from ..llm import LLM, Usage, is_fatal
 from ..rag import HybridIndex, chunk_paper, rerank
 from ..rag.index import tokenize
 from ..state import ReviewState, latest, stage_round
@@ -965,6 +965,8 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
                             design_category=ans.design_category,
                             design_category_verified=design_ok)
             except Exception as exc:  # LLM / validation / network error after retries
+                if is_fatal(exc):
+                    raise
                 item["flags"].append(f"llm_error: {type(exc).__name__}: {exc}"[:300])
                 fields, _ = check_fields([], specs, chunks)
                 item.update(fields=fields, results=[], design_category=None,
@@ -1006,6 +1008,8 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
                                                chunks)
                 item["flags"] += flags
             except Exception as exc:
+                if is_fatal(exc):
+                    raise
                 item["flags"].append(f"llm_error: {type(exc).__name__}: {exc}"[:300])
                 domains, _ = check_domains([], tool, chunks)
             item["domains"] = domains
@@ -1047,6 +1051,8 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
                                                   chunks)
                 ext_item["flags"] += flags
             except Exception as exc:
+                if is_fatal(exc):
+                    raise
                 ext_item["flags"].append(f"llm_error_2x2: {type(exc).__name__}: {exc}"[:300])
                 tables_ = []
             ext_item["diagnostic"] = tables_

@@ -18,10 +18,14 @@ Two places use a topic:
 
 A criterion in ``topics.yaml`` is a string, or ``{text, stage, test, label}`` (Part 6c;
 ``label``: Part 9b, the short exclusion reason of the PRISMA diagram):
+``evidence_terms`` (Part 10b) = words a quote must contain for a 'yes' to count;
 ``stage: full_text`` = an abstract can never show it (checked only at full text);
 ``test`` = one positive sentence the screeners judge, while the review's wording
 stays the one displayed. ``load_topic`` flattens them into the text lists plus
 ``full_text_criteria`` and ``criterion_tests``.
+
+Part 10b: ``search_terms`` ({role: [keywords]}) fixes a search block (e.g. the device
+block), built by code.
 
 Part 10: a topic may also give ``extraction_fields`` ({key: question}) and
 ``checklist_domains`` (the review's own risk-of-bias instrument), copied into the protocol.
@@ -48,7 +52,7 @@ def load_topic(topic_id: str, path: str | Path | None = None) -> dict:
     if topic_id not in topics:
         raise KeyError(f"unknown topic {topic_id!r} (known: {', '.join(topics)})")
     topic = {"id": topic_id, **topics[topic_id]}
-    full_text, tests, labels = [], {}, {}
+    full_text, tests, labels, evidence = [], {}, {}, {}
     for key in ("inclusion_criteria", "exclusion_criteria"):
         texts = []
         for c in topic.get(key) or []:
@@ -64,10 +68,13 @@ def load_topic(topic_id: str, path: str | Path | None = None) -> dict:
                 tests[c["text"]] = c["test"]
             if c.get("label"):
                 labels[c["text"]] = c["label"]
+            if c.get("evidence_terms"):
+                evidence[c["text"]] = [str(t) for t in c["evidence_terms"]]
         if key in topic:
             topic[key] = texts
     topic["full_text_criteria"], topic["criterion_tests"] = full_text, tests
     topic["criterion_labels"] = labels
+    topic["criterion_evidence"] = evidence
     return topic
 
 
@@ -109,7 +116,10 @@ def seed_protocol(protocol: dict, topic: dict) -> tuple[dict, dict]:
         out["criterion_tests"] = dict(topic.get("criterion_tests") or {})
         out["criterion_labels"] = [{"criterion": t, "label": lab} for t, lab in
                                    (topic.get("criterion_labels") or {}).items()]
-        fields += ["full_text_criteria", "criterion_tests", "criterion_labels"]
+        out["criterion_evidence"] = [{"criterion": t, "terms": terms} for t, terms in
+                                     (topic.get("criterion_evidence") or {}).items()]
+        fields += ["full_text_criteria", "criterion_tests", "criterion_labels",
+                   "criterion_evidence"]
     if topic.get("outcome_directions"):
         given = {str(k): str(v) for k, v in topic["outcome_directions"].items()}
         out["outcome_directions"] = [{"outcome": k, "better": v} for k, v in given.items()] + [
@@ -128,6 +138,11 @@ def seed_protocol(protocol: dict, topic: dict) -> tuple[dict, dict]:
                                      "question": str(d[2])}
                                     for d in topic["checklist_domains"]]
         fields += ["checklist_name", "checklist_domains"]
+    # Part 10b: fixed search keywords per block role (e.g. the device block of T2/T3).
+    if topic.get("search_terms"):
+        out["search_terms"] = {str(role): [str(t) for t in terms or []]
+                               for role, terms in topic["search_terms"].items()}
+        fields.append("search_terms")
     out["topic"] = topic["id"]
     out["criteria_source"] = criteria_source(topic)
     out = Protocol.model_validate(out).model_dump(mode="json")

@@ -57,6 +57,37 @@ _ecg_rob_domains: &ecg_rob_domains
   - [D4, Deployed variant evaluated, "Can the classification quality of the variant actually deployed on the device be separated from the best software result?"]
   - [D5, Model size reported, "Is a parameter count or a memory footprint of the model reported?"]
 
+# Part 10b (from the T2 run 20261108-114756-7b0e80: 75 of 100 included, nearly all generic
+# heartbeat classifiers with no device). `search_terms` fixes a search block by role: code
+# builds it, so a refinement can never drop it. `evidence_terms` on a criterion: a 'yes'
+# counts only if its quote contains one of these words (whole word, plural allowed);
+# otherwise it is 'unclear', and at full text (full text available) an inclusion criterion
+# still unclear is not met.
+_device_terms: &device_terms
+  [microcontroller, MCU, embedded, edge device, edge computing, edge AI, wearable,
+   smartphone, mobile phone, FPGA, ASIC, SoC, system on chip, TinyML, low-power,
+   low power, quantized, quantization, on-device, resource-constrained]
+_device_evidence: &device_evidence
+  [microcontroller, MCU, embedded, edge, wearable, smartphone, mobile, phone, FPGA, ASIC,
+   SoC, system on chip, chip, TinyML, Raspberry Pi, Arduino, STM32, ESP32, Cortex, nRF,
+   Jetson, hardware, on-device, processor, low power, resource-constrained, constrained]
+_efficiency_evidence: &efficiency_evidence
+  [parameter, memory, kB, MB, KB, kilobyte, megabyte, RAM, flash, footprint, model size,
+   latency, inference time, execution time, runtime, ms, millisecond, power, energy, mW,
+   mJ, nJ, watt, joule, MAC, MACs, FLOPs, FLOP, OPs, throughput, compression, cycles]
+_embedded_terms: &embedded_terms
+  [microcontroller, MCU, embedded, FPGA, ASIC, SoC, system on chip, VLSI,
+   hardware implementation, hardware accelerator, TinyML, edge device, edge computing,
+   low-power, low power, on-chip]
+_embedded_evidence: &embedded_evidence
+  [microcontroller, MCU, embedded, FPGA, ASIC, SoC, system on chip, chip, VLSI, CMOS, nm,
+   hardware, synthesized, synthesised, Raspberry Pi, Arduino, STM32, ESP32, Cortex, nRF,
+   Jetson, processor, accelerator, TinyML]
+_cost_evidence: &cost_evidence
+  [latency, memory, footprint, kB, KB, MB, LUT, LUTs, flip-flop, DSP, BRAM, utilization,
+   utilisation, resource, power, energy, mW, mJ, nJ, watt, joule, area, mm2, gate, cycles,
+   inference time, execution time, ms, millisecond, throughput]
+
 T2:
   question: >-
     Which lightweight machine-learning models detect abnormal versus normal ECG on
@@ -77,11 +108,14 @@ T2:
       label: no abnormal vs normal task
     - text: Model evaluated for or on a resource-constrained device (microcontroller, wearable, smartphone or FPGA)
       label: no constrained device
+      evidence_terms: *device_evidence
     - text: At least one efficiency metric reported (model size, memory, latency, power or energy)
       stage: full_text
       label: no efficiency metric
+      evidence_terms: *efficiency_evidence
     - {text: Peer-reviewed journal or conference publication, label: not peer reviewed}
   exclusion_criteria: []
+  search_terms: {setting: *device_terms}
   extraction_fields: *engineering_fields
   checklist_name: Five-domain instrument of Arredondo-Velazquez 2026 (Table 2)
   checklist_domains: *ecg_rob_domains
@@ -111,11 +145,14 @@ T3:
     - {text: ECG or heartbeat classifier, label: not an ECG classifier}
     - text: Classifier executed or synthesized for a physical embedded target (microcontroller, FPGA, ASIC or SoC)
       label: no embedded implementation
+      evidence_terms: *embedded_evidence
     - text: At least one execution cost metric reported (latency, memory footprint, resource utilization, power or energy)
       stage: full_text
       label: no execution cost metric
+      evidence_terms: *cost_evidence
     - {text: Peer-reviewed journal or conference publication, label: not peer reviewed}
   exclusion_criteria: []
+  search_terms: {setting: *embedded_terms}
   extraction_fields: *engineering_fields
   checklist_name: Five-domain instrument of Arredondo-Velazquez 2026 (Table 2)
   checklist_domains: *ecg_rob_domains

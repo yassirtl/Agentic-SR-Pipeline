@@ -65,6 +65,42 @@ def cache_key(model: str, schema: type[BaseModel], prompt: str) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
+def is_fatal(exc: BaseException) -> bool:
+    """Part 10b: an API error that no retry or other record can fix (no credits left, bad
+    or revoked key). Stages that catch per-record errors re-raise these, so the run stops
+    with one message (``sr-review`` then says: fix it, then ``--resume``) instead of
+    marking every remaining record as failed."""
+    try:
+        import openai
+    except ImportError:  # pragma: no cover
+        return False
+    if isinstance(exc, (openai.AuthenticationError, openai.PermissionDeniedError)):
+        return True
+    if isinstance(exc, openai.RateLimitError):
+        return getattr(exc, "code", None) == "insufficient_quota" or \
+            "insufficient_quota" in str(exc)
+    return False
+
+
+def api_error_message(exc: BaseException) -> str | None:
+    """One line for an OpenAI API error (None if ``exc`` is not one)."""
+    try:
+        import openai
+    except ImportError:  # pragma: no cover
+        return None
+    if not isinstance(exc, openai.OpenAIError):
+        return None
+    if isinstance(exc, openai.RateLimitError) and is_fatal(exc):
+        return "OpenAI API: no credits left (insufficient_quota). Add credits on the OpenAI billing page"
+    if isinstance(exc, (openai.AuthenticationError, openai.PermissionDeniedError)):
+        return "OpenAI API: the key was refused (check OPENAI_API_KEY in .env)"
+    if isinstance(exc, openai.RateLimitError):
+        return "OpenAI API: rate limit still exceeded after retries; wait a minute"
+    if isinstance(exc, openai.APIConnectionError):
+        return "OpenAI API: no connection (network down or timeout)"
+    return f"OpenAI API error: {type(exc).__name__}: {str(exc)[:200]}"
+
+
 class LLM(Protocol):
     def call_with_usage(self, schema: type[T], prompt: str, *, agent: str) -> tuple[T, Usage]: ...
 

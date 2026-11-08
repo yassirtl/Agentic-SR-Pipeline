@@ -56,15 +56,21 @@ def flow_counts(prisma: dict, protocol: dict | None = None) -> dict:
     identified = ident.get("identified", 0)
     not_dl = ident.get("not_retrieved", 0)
     dups = ident.get("duplicates_removed", 0)
-    # Title-rule exclusions move from "records excluded" to the automation-tools box.
-    automation = ta.get("title_rule", 0)
+    # Code-rule exclusions (title rule; Part 10b arXiv rule) move from "records excluded"
+    # to the automation-tools box, each subtracted from its own criterion.
+    auto_by = dict(ta.get("automation_by_criterion")
+                   or ({"D": ta["title_rule"]} if ta.get("title_rule") else {}))
+    automation = sum(auto_by.values())
+    arxiv = ta.get("arxiv_rule", 0)
     not_screened = ta.get("not_screened", 0)
     limit = ta.get("screen_limit")
     screened = ta.get("records_screened", ident.get("records_screened", 0)) - automation
     ta_excl = ta.get("records_excluded", 0) - automation
     ta_by = dict(ta.get("excluded_by_criterion") or {})
-    if automation:
-        ta_by["D"] = ta_by.get("D", 0) - automation
+    for cid, k in auto_by.items():
+        ta_by[cid] = ta_by.get(cid, 0) - k
+        if ta_by[cid] <= 0:
+            ta_by.pop(cid)
     sought = ft.get("reports_sought", ta.get("included", 0))
     abstract_only = ft.get("reports_not_retrieved", 0)
     ft_excl = ft.get("reports_excluded", 0)
@@ -82,7 +88,8 @@ def flow_counts(prisma: dict, protocol: dict | None = None) -> dict:
     removed = ["Records removed before screening:",
                f"  Duplicate records ({_n(dups)})",
                f"  Marked as ineligible by automation tools ({_n(automation)}): title "
-               "rule, the title names a review, meta-analysis or protocol",
+               "rule, the title names a review, meta-analysis or protocol"
+               + (f"; arXiv preprint, not peer reviewed ({_n(arxiv)})" if arxiv else ""),
                f"  Not downloaded ({_n(not_dl)}): above the ceiling of "
                f"{ident.get('max_records', '?')} records per database, or counted but not "
                "returned"]

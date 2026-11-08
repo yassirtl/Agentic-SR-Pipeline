@@ -92,6 +92,11 @@ def build_prompt(question: str, template: Template) -> str:
         "Rules:\n"
         "- Stay on the question. Population: exactly who the question names; do not add a "
         "condition, severity or setting the question does not state.\n"
+        # Part 10b (PICOS): T2 put "on resource-constrained devices" into the intervention.
+        "- Setting: the platform, device or context the question names for where the "
+        "intervention runs or is studied (e.g. 'resource-constrained devices: "
+        "microcontroller, wearable, smartphone, FPGA'), with the examples it lists; empty if "
+        "it names none. Keep it out of the intervention.\n"
         "- Outcomes: only the ones the question names, primary outcome first. Do NOT add "
         "secondary outcomes unless the user listed them below.\n"
         "- Name each outcome as the measured construct (e.g. 'depressive symptoms'), never as "
@@ -115,6 +120,10 @@ def build_prompt(question: str, template: Template) -> str:
         "- For each criterion, a short label (criterion_labels, at most 5 words): the reason "
         "a record is excluded on it, e.g. 'not older adults', 'comorbidities', 'no control "
         "group'.\n"
+        "- For a criterion about a concrete thing a supporting quote must name (a device, "
+        "hardware, a measured quantity such as latency or energy), list those words in "
+        "criterion_evidence (e.g. microcontroller, FPGA, smartphone). Skip criteria on "
+        "design, population or general topic.\n"
         "- Keep every element the user fixed below; refine, do not contradict.\n"
         + (DATABASE_RULE if auto else "")
         + f"\nResearch question: {question}\n"

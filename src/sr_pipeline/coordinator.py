@@ -9,7 +9,7 @@ from .agents.screening import describe_screening
 from .agents.synthesis import describe_synthesis
 from .guardrail import (MAX_STEPS, PREREQUISITES, STAGES, StageName, check_move,
                         earliest_stale, fresh_stages, is_fresh)
-from .llm import LLM
+from .llm import LLM, is_fatal
 from .state import ReviewState
 
 END_SIGNAL = "__end__"  # next_stage value that routes the graph to END
@@ -134,6 +134,8 @@ def coordinator_step(state: ReviewState, llm: LLM, max_steps: int = MAX_STEPS) -
     try:
         decision, usage = llm.call_with_usage(Decision, build_prompt(state), agent="coordinator")
     except Exception as exc:  # bad JSON, validation error, API error after retries
+        if is_fatal(exc):
+            raise
         # Never crash the run: take the guardrail's deterministic choice instead.
         # The step still counts, so a dead API ends the run at the budget.
         stage = earliest_stale(completed) or "report"

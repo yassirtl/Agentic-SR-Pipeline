@@ -47,7 +47,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from ..llm import LLM
+from ..llm import LLM, is_fatal
 from ..state import ReviewState, stage_round
 from .extraction import numbers, outcomes
 from .screening import _sum_usage, quote_found
@@ -281,6 +281,8 @@ def make_critic(llm: LLM, *, max_loops: int = MAX_LOOPS):
                                          confirmed_by_code=confirmed, check=why,
                                          severity_claimed=it.severity))
             except Exception as exc:  # the code checks still stand
+                if is_fatal(exc):
+                    raise
                 issues.append(_issue("warning", "critic_llm_error",
                                      f"{type(exc).__name__}: {exc}"[:300]))
         blockers = [i for i in issues if i["severity"] == "blocker"]

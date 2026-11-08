@@ -48,6 +48,13 @@ class PICO(BaseModel):
                             "control'), not 'none'.")
     outcomes: list[str] = Field(description="Outcomes named by the question, primary outcome "
                                 "first; others only if the user asked for them.")
+    # Part 10b (PICOS): where the intervention runs, when the question names it. Seen in
+    # the T2 run: "on resource-constrained devices" went into the intervention, so the
+    # search had no device block and the top records were generic ECG classifiers.
+    setting: str = Field("", description="The setting, platform or context the question "
+                         "names (e.g. 'resource-constrained devices: microcontroller, "
+                         "wearable, smartphone, FPGA', 'primary care'); empty if it names "
+                         "none. Never repeated in the intervention.")
 
 
 class OutcomeDirection(BaseModel):
@@ -81,6 +88,17 @@ class CriterionLabel(BaseModel):
     label: str = Field(description=f"At most {LABEL_MAX_WORDS} words: the reason a record "
                        "is excluded on this criterion, e.g. 'not older adults', "
                        "'comorbidities', 'no control group'.")
+
+
+class CriterionEvidence(BaseModel):
+    """Part 10b: words a quote must contain for a 'yes' on this criterion to count. Seen in
+    the T2 run: "evaluated on a constrained device" answered yes quoting "we applied the
+    MIT-BIH dataset"."""
+
+    criterion: str = Field(description="A criterion from the two lists, copied word for word.")
+    terms: list[str] = Field(description="Words that must appear in the quote supporting a "
+                             "'yes', e.g. ['microcontroller', 'FPGA', 'smartphone'] for a "
+                             "device criterion.")
 
 
 class YearRange(BaseModel):
@@ -146,6 +164,11 @@ class ProtocolDraft(BaseModel):
     criterion_labels: list[CriterionLabel] = Field(
         default_factory=list,
         description="One entry per criterion: a short exclusion reason for the flow diagram.")
+    criterion_evidence: list[CriterionEvidence] = Field(
+        default_factory=list,
+        description="Only for criteria about a concrete thing a quote must name (a device, "
+                    "hardware, a measured quantity): the words such a quote contains. Leave "
+                    "out criteria about design, population or general topic.")
     rationale: str = Field(description="Two or three sentences on how the question was framed.")
 
 
@@ -188,6 +211,10 @@ class Protocol(ProtocolDraft):
     extraction_fields: dict[str, str] = Field(default_factory=dict)
     checklist_name: str = ""
     checklist_domains: list[ChecklistDomain] = Field(default_factory=list)
+    # Part 10b, from an evaluation topic: fixed keywords for a search block, by role
+    # ({"setting": ["microcontroller", ...]}). The block is built by code from them (the
+    # LLM's version of that block is replaced), so a refinement can never drop it.
+    search_terms: dict[str, list[str]] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _tags_follow_criteria(self):
@@ -216,6 +243,14 @@ class Protocol(ProtocolDraft):
                 seen.add(lab.criterion)
                 labels.append(CriterionLabel(criterion=lab.criterion, label=" ".join(words)))
         self.criterion_labels = labels
+        # Evidence terms: keyed by criterion text, empty term lists dropped.
+        seen, evidence = set(), []
+        for ev in self.criterion_evidence:
+            terms = list(dict.fromkeys(t.strip() for t in ev.terms if t.strip()))
+            if ev.criterion in texts and ev.criterion not in seen and terms:
+                seen.add(ev.criterion)
+                evidence.append(CriterionEvidence(criterion=ev.criterion, terms=terms))
+        self.criterion_evidence = evidence
         return self
 
 

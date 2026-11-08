@@ -32,6 +32,15 @@ end is the one with the fewest databases out of range (ties: the latest), so a
 refinement that overshoots does not replace a better earlier plan. An attempt
 identical to an earlier one is marked ``same_as`` and the LLM is told so.
 
+Setting block (Part 10b, PICOS). In the T2 run the device part of the question
+("on resource-constrained devices") sat inside the intervention, the blocks were
+ECG AND machine learning AND accuracy, and the top 100 records by relevance were
+generic heartbeat classifiers. The protocol now has ``pico.setting``, and the
+LLM adds a setting block when it is specific. An evaluation topic can fix a
+block's keywords (``protocol['search_terms']``, e.g. ``{"setting": [...]}``):
+code builds that block, replaces the LLM's block of the same role in every
+attempt (like the design block), and an empty list removes the role's block.
+
 Narrowing that keeps recall (Part 4d). Told "too broad", gpt-4o-mini used to
 *add* synonyms. A refinement now returns ``RefinedPlan``: the plan plus
 ``removed_terms`` / ``changed_terms`` with a reason each, and the prompt allows
@@ -59,9 +68,10 @@ class SearchPlan(BaseModel):
     """What the LLM writes."""
 
     concepts: list[Concept] = Field(
-        min_length=1, max_length=4,
-        description="Concept blocks AND-ed together: population and intervention, plus an "
-                    "outcome block when the rules ask for it. No design block.")
+        min_length=1, max_length=5,
+        description="Concept blocks AND-ed together: population and intervention, plus a "
+                    "setting and an outcome block when the rules ask for them. No design "
+                    "block.")
     rationale: str = Field(description="Two or three sentences: which blocks and why.")
 
 
@@ -95,7 +105,8 @@ def _protocol_lines(protocol: dict) -> str:
         f"Population: {pico['population']}\n"
         f"Intervention/exposure: {pico['intervention']}\n"
         f"Comparator: {pico['comparator']}\n"
-        f"Outcomes: {', '.join(pico['outcomes'])}\n"
+        + (f"Setting: {pico['setting']}\n" if pico.get("setting") else "")
+        + f"Outcomes: {', '.join(pico['outcomes'])}\n"
         f"Study designs: {', '.join(designs) or 'any'}"
         + (" (a validated design filter for these is added by code)" if designs else "")
         + "\n"
@@ -119,6 +130,10 @@ def build_prompt(protocol: dict, max_records: int = 3000) -> str:
         "(a disease, symptom or measurable condition, e.g. depression), or when population "
         "AND intervention would match far too many records. Skip it for generic outcomes "
         "(e.g. effectiveness, wellbeing) that abstracts often do not name.\n"
+        "- Add a setting block (role setting) when the protocol names a specific setting "
+        "that eligible studies must have (a device or platform, e.g. microcontroller, "
+        "wearable, smartphone, FPGA; or a care setting). Keep those words out of the "
+        "intervention block.\n"
         "- Never write a study-design block (randomized, trial, cohort...): when the protocol "
         "restricts designs, a validated design filter is added by code.\n"
         "- One concept per block, and each term in exactly one block. The population block "
@@ -130,7 +145,7 @@ def build_prompt(protocol: dict, max_records: int = 3000) -> str:
         "'improvement in ...'). Plain words only (no wildcards, no quotes, no AND/OR).\n"
         "- For each block give the matching MeSH headings (official spelling), or none if you "
         "are not sure. They are used for PubMed only.\n"
-        "- Set each block's role (population, intervention or outcome). Leave "
+        "- Set each block's role (population, intervention, setting or outcome). Leave "
         "publication_types and title_terms empty.\n\n"
         + _protocol_lines(protocol)
     )
@@ -144,7 +159,8 @@ def _describe_attempt(a: dict) -> str:
         extra = (f"; MeSH: {', '.join(c['mesh_terms'])}" if c.get("mesh_terms") else "") + \
                 (f"; publication types: {', '.join(c['publication_types'])}"
                  if c.get("publication_types") else "")
-        fixed = " (fixed, added by code)" if c.get("role") == "design" else ""
+        fixed = " (fixed, added by code)" if c.get("fixed") or c.get("role") == "design" \
+            else ""
         lines.append(f"  [{c.get('role', 'other')}]{fixed} {c['name']}: "
                      f"{', '.join(c['keywords'])}{extra}")
     for db, status in a["status"].items():
@@ -246,12 +262,30 @@ def sum_usage(usages: list[Usage]) -> dict:
 
 # --- the stage ---------------------------------------------------------------------
 
-def topic_concepts(plan: SearchPlan) -> tuple[list[Concept], int]:
-    """The LLM's blocks without any design block (code owns designs) and without the
-    code-only fields. Returns the blocks and how many design blocks were dropped."""
+def topic_concepts(plan: SearchPlan, fixed_roles: frozenset[str] = frozenset()
+                   ) -> tuple[list[Concept], int]:
+    """The LLM's blocks without any design block (code owns designs), without the blocks
+    whose role code fixes (``fixed_roles``, Part 10b) and without the code-only fields.
+    Returns the blocks and how many design blocks were dropped."""
     kept = [c.model_copy(update={"publication_types": [], "title_terms": []})
-            for c in plan.concepts if c.role != "design"]
-    return kept, len(plan.concepts) - len(kept)
+            for c in plan.concepts if c.role != "design" and c.role not in fixed_roles]
+    return kept, sum(c.role == "design" for c in plan.concepts)
+
+
+def fixed_blocks(protocol: dict) -> tuple[frozenset[str], list[Concept]]:
+    """Part 10b: (roles fixed by ``protocol['search_terms']``, the blocks code builds for
+    them). A role with an empty list is fixed to "no block"."""
+    terms = protocol.get("search_terms") or {}
+    blocks = [Concept(name=f"{role}: fixed by the protocol", role=role, keywords=list(kw))
+              for role, kw in terms.items() if kw]
+    return frozenset(terms), blocks
+
+
+def merge_blocks(topic: list[Concept], fixed: list[Concept]) -> list[Concept]:
+    """LLM blocks and fixed blocks in PICOS order (population, intervention, setting,
+    outcome, other); the design block is appended after by the caller."""
+    order = {"population": 0, "intervention": 1, "setting": 2, "outcome": 3, "other": 4}
+    return sorted(topic + fixed, key=lambda c: order.get(c.role, 4))
 
 
 def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_records: int = 3000,
@@ -273,20 +307,28 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
         usages: list[Usage] = []
         prompt = build_prompt(protocol, max_records)
         design, design_mapping = design_block(protocol.get("study_designs", []))
+        fixed_roles, fixed = fixed_blocks(protocol)
+        setting = (protocol.get("pico") or {}).get("setting") or ""
 
         for number in range(1, max_refinements + 2):
             schema = SearchPlan if number == 1 else RefinedPlan
             plan, usage = llm.call_with_usage(schema, prompt, agent="search_strategy")
             usages.append(usage)
-            topic, dropped = topic_concepts(plan)
-            final = topic + ([design] if design else [])
+            topic, dropped = topic_concepts(plan, fixed_roles)
+            final = merge_blocks(topic, fixed) + ([design] if design else [])
             queries = build_queries(final, databases)
-            concepts = [c.model_dump() for c in final]
+            concepts = [c.model_dump() | ({"fixed": True} if c in fixed else {})
+                        for c in final]
             attempt = {"attempt": number, "concepts": concepts, "queries": queries,
                        "rationale": plan.rationale, "counts": {}, "errors": {}, "status": {},
                        "same_as": next((a["attempt"] for a in attempts
                                         if a["concepts"] == concepts), None),
-                       "overlap": overlap(concepts), "llm_design_blocks_dropped": dropped}
+                       "overlap": overlap(concepts), "llm_design_blocks_dropped": dropped,
+                       "llm_blocks_replaced": [c.model_dump() for c in plan.concepts
+                                               if c.role in fixed_roles],
+                       # The protocol names a setting but no block searches it.
+                       "setting_block_missing": bool(setting) and not any(
+                           c.role == "setting" for c in final)}
             if isinstance(plan, RefinedPlan):
                 attempt.update(
                     removed_terms=[t.model_dump() for t in plan.removed_terms],
@@ -355,6 +397,8 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
                                              for t in a.get("changed_terms", [])],
                            "stopped_no_progress": any(a.get("no_progress") for a in attempts),
                            "design_filter": design_mapping,
+                           "fixed_blocks": sorted(fixed_roles),
+                           "setting_block_missing": chosen["setting_block_missing"],
                            "not_retrieved": strategy["not_retrieved"],
                            **sum_usage(usages)}],
         }

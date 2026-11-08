@@ -195,7 +195,9 @@ def _methods(state: dict, models: dict[str, str]) -> list[str]:
             "tools'): before any LLM call, a code rule excludes on the design criterion D a "
             "record whose title names its own type as a review, meta-analysis, protocol, "
             "editorial or commentary (at the start of the title or after a colon or dash, "
-            "e.g. '...: a systematic review'); these records are counted before screening, "
+            "e.g. '...: a systematic review'), and, when a criterion requires peer review, "
+            "a record with an arXiv DOI (10.48550) is excluded on it; these records are "
+            "counted before screening, "
             "not as screening exclusions. Two LLM screeners (A strict, B lenient) judged every record "
             "criterion by criterion, each failure backed by a quote that code verifies in "
             "the text; disagreements went to an LLM adjudicator, unresolved records to a "
@@ -260,8 +262,8 @@ def _results(state: dict, base: Path, prisma_png: Path | None) -> list[str]:
     ta, ft = pc.get("title_abstract") or {}, pc.get("full_text") or {}
     out = ["## Results", "", "### Study selection", ""]
     removed = [f"{n['duplicates']} duplicates",
-               f"{n['automation']} records marked as ineligible by the title rule "
-               "(automation tool)",
+               f"{n['automation']} records marked as ineligible by automation tools "
+               "(title rule, arXiv rule)",
                f"{n['not_downloaded']} records not downloaded (search ceiling)"]
     if n["screen_limit"] or n["not_screened"]:
         removed.append(f"{n['not_screened']} records above the screening limit of "
