@@ -64,6 +64,12 @@ class Config(BaseModel):
     max_steps: int = Field(40, ge=1, description="Coordinator step budget.")
     min_hits: int = Field(20, ge=0, description="Search too narrow below this many hits.")
     max_refinements: int = Field(2, ge=0, description="Search refinements after the first plan.")
+    broaden_below: int | None = Field(
+        None, ge=0,
+        description="Part 10c: the search may broaden when all databases together return "
+                    "fewer hits than this (sum of counts, an upper bound of the unique "
+                    "records). None = 3 x screen_limit (3 x 100 when every record is "
+                    "screened); 0 = never broaden.")
     contact_email: str | None = Field(
         None, description="Sent to OpenAlex (mailto) and NCBI (email) as a polite contact.")
 
@@ -101,6 +107,12 @@ class Config(BaseModel):
     def model_for(self, agent: str) -> str:
         return self.models.get(agent, self.default_model)
 
+    def search_broaden_below(self) -> int:
+        """Part 10c: total hits under which the search may broaden (see ``broaden_below``)."""
+        if self.broaden_below is not None:
+            return self.broaden_below
+        return 3 * (self.screen_limit or 100)
+
     def make_llm(self, **kwargs):
         """Real LLM wired to this config (per-agent models, absolute cache dir)."""
         from .llm import OpenAILLM
@@ -133,6 +145,7 @@ _ENV_FIELDS = {
     "SR_CONTACT_EMAIL": "contact_email",
     "SR_MIN_HITS": "min_hits",
     "SR_MAX_REFINEMENTS": "max_refinements",
+    "SR_BROADEN_BELOW": "broaden_below",
     "SR_EMBEDDING_MODEL": "embedding_model",
     "SR_EMBEDDING_CACHE": "embedding_cache",
     "SR_SCREENING_WORKERS": "screening_workers",

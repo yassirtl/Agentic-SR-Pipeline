@@ -97,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
                                                                           accepted=True)})
     merge(make_search_strategy(llm, http, max_records=max_records, min_hits=cfg.min_hits,
                                max_refinements=cfg.max_refinements,
+                               broaden_below=cfg.search_broaden_below(),
                                contact_email=cfg.contact_email)(state))
 
     results, errors = search_all(state["search_strategy"], http, max_records=max_records,

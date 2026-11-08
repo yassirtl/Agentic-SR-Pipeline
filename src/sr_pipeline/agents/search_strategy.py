@@ -49,6 +49,27 @@ a phrase, add a missing outcome block); dropping a specific synonym is not
 allowed. Code records what really changed (``term_diff``) and stops the loop
 early when the counts move by less than ``MIN_PROGRESS`` (5%) versus the
 previous attempt in every database (``no_progress``): another call would not help.
+
+Recall fixes (Part 10c, after the T1/T3 v1 runs: the search found 9/18 and 8/30 gold
+studies while screening kept 13/14 of the gold it saw). Three causes, three fixes:
+- *Nothing broadened.* 80 and 278 records were "in range" (``min_hits`` 20), so the loop
+  stopped. Now, when all databases together return fewer than ``broaden_below`` hits
+  (default 3 x the screening limit; the sum of counts is an upper bound of the unique
+  records), the LLM is asked to broaden with three moves only: drop the outcome block,
+  split a phrase into its key words, add common synonyms or product names. Code checks
+  that the total rose by ``MIN_PROGRESS``; a broadening that did not is flagged
+  ``broaden_failed``, stops the loop and never beats an earlier attempt.
+- *Phrases instead of words.* T3's blocks were "classify ECG", "ECG classification",
+  "ML models" where the review searched ECG, electrocardiogram, heartbeat. The prompt
+  asks for single words or short established phrases; code flags keywords of more than
+  3 words (``long_keywords``) and keywords sharing a word with another block
+  (``mixed_keywords``), shown to the LLM at refinement.
+- *Blocks that narrow without defining the topic.* T1 had a setting block repeating the
+  intervention (smartwatch / wearable / device) and an outcome block of accuracy terms.
+  Code merges an LLM setting block into the intervention block when half its keywords
+  are already covered there (``setting_merged``), and drops an LLM outcome block made of
+  measurement terms (``METRIC_TERMS``: they say how results are reported, not what the
+  topic is; ``outcome_dropped``). Blocks fixed by the topic are never touched.
 """
 
 from collections.abc import Mapping
@@ -62,6 +83,34 @@ from ..state import ReviewState, stage_round
 
 OK, TOO_BROAD, TOO_NARROW, ERROR = "ok", "too broad", "too narrow", "error"
 MIN_PROGRESS = 0.05  # a refinement must move some database's count by at least 5%
+MAX_KEYWORD_WORDS = 3
+SETTING_OVERLAP = 0.5   # share of setting keywords covered by the intervention -> merge
+METRIC_SHARE = 2 / 3    # share of outcome keywords that are measurement terms -> drop
+
+# How a result is measured, not what a study is about (Part 10c). Normalised forms
+# (lower case, hyphens as spaces, plural "s" removed; see ``_norm``).
+METRIC_TERMS = frozenset({
+    "accuracy", "diagnostic accuracy", "classification accuracy", "detection accuracy",
+    "sensitivity", "specificity", "precision", "recall", "f1", "f1 score", "f score",
+    "auc", "auroc", "roc", "roc curve", "area under the curve",
+    "predictive value", "positive predictive value", "negative predictive value", "ppv",
+    "npv", "true positive", "false positive", "true negative", "false negative",
+    "detection rate", "error rate", "misclassification", "diagnostic performance",
+    "performance", "efficiency", "efficacy", "effectiveness", "validity", "reliability",
+    "agreement", "kappa", "latency", "inference time", "execution time", "throughput",
+    "energy", "energy consumption", "power consumption", "memory", "memory footprint",
+    "model size",
+})
+# Generic task words (Part 10c, seen in the T3 smoke run of the fixes): OR-ed into a
+# block, one of them voids the block, e.g. (ECG OR classification) matches every
+# classification paper. Single words only; phrases ("arrhythmia detection") are kept.
+TASK_TERMS = frozenset({
+    "classify", "classification", "detect", "detection", "recognition", "identification",
+    "prediction", "analysis", "algorithm", "model", "method", "approach", "system",
+    "framework", "evaluation", "estimation", "monitoring",
+})
+_STOP = frozenset({"a", "an", "and", "the", "of", "in", "on", "for", "with", "to", "by",
+                   "or", "at", "from", "based", "using"})
 
 
 class SearchPlan(BaseModel):
@@ -129,20 +178,31 @@ def build_prompt(protocol: dict, max_records: int = 3000) -> str:
         "- Add an outcome block when the primary outcome is specific and defines the topic "
         "(a disease, symptom or measurable condition, e.g. depression), or when population "
         "AND intervention would match far too many records. Skip it for generic outcomes "
-        "(e.g. effectiveness, wellbeing) that abstracts often do not name.\n"
+        "(e.g. effectiveness, wellbeing) that abstracts often do not name, and for "
+        "measurement terms (accuracy, sensitivity, specificity, precision, efficiency, "
+        "latency): they say how results are reported, not what the topic is, and code "
+        "drops such a block.\n"
         "- Add a setting block (role setting) when the protocol names a specific setting "
         "that eligible studies must have (a device or platform, e.g. microcontroller, "
         "wearable, smartphone, FPGA; or a care setting). Keep those words out of the "
-        "intervention block.\n"
+        "intervention block, and do not add a setting block that repeats the intervention "
+        "(code merges it into the intervention block).\n"
         "- Never write a study-design block (randomized, trial, cohort...): when the protocol "
         "restricts designs, a validated design filter is added by code.\n"
         "- One concept per block, and each term in exactly one block. The population block "
         "holds only who is studied (age group, setting), never the condition being measured "
         "as the outcome.\n"
         "- For each block give 3 to 10 keywords: the words authors write in titles and "
-        "abstracts, 1 to 3 words each (synonyms, abbreviations, British/American spellings, "
-        "singular forms). Never phrases describing a result ('reduction in ...', "
-        "'improvement in ...'). Plain words only (no wildcards, no quotes, no AND/OR).\n"
+        "abstracts, 1 to 3 words each: single words or short established phrases (synonyms, "
+        "abbreviations, common product or brand names, British/American spellings, singular "
+        "forms). Never phrases describing a result ('reduction in ...', 'improvement in "
+        "...'), and never a phrase that restates the question or joins two concepts (e.g. "
+        "'exercise for depression'): each concept's words go in that concept's own block.\n"
+        "- OR inside a block means 'any of these': never OR a generic task word "
+        "(classification, detection, analysis, algorithm, model) with a topic's specific "
+        "words: (ECG OR classification) matches every classification paper. Such single "
+        "words are removed by code; established phrases (e.g. 'arrhythmia detection') are "
+        "fine. Plain words only (no wildcards, no quotes, no AND/OR).\n"
         "- For each block give the matching MeSH headings (official spelling), or none if you "
         "are not sure. They are used for PubMed only.\n"
         "- Set each block's role (population, intervention, setting or outcome). Leave "
@@ -163,14 +223,43 @@ def _describe_attempt(a: dict) -> str:
             else ""
         lines.append(f"  [{c.get('role', 'other')}]{fixed} {c['name']}: "
                      f"{', '.join(c['keywords'])}{extra}")
+    if a.get("generic_removed"):
+        lines.append("  (generic words removed by code: " + ", ".join(a["generic_removed"]) + ")")
+    for c in a.get("llm_blocks_replaced") or []:
+        lines.append(f"  (your {c.get('role')} block was replaced or removed by code: the protocol fixes "
+                     "it; do not change it)")
+    if a.get("outcome_dropped"):
+        lines.append("  (outcome block of measurement terms dropped by code: "
+                     + ", ".join(a["outcome_dropped"]) + ")")
+    if a.get("setting_merged"):
+        lines.append("  (setting block merged into the intervention block by code, same words: "
+                     + ", ".join(a["setting_merged"]["covered"]) + ")")
+    for key, what in (("long_keywords", "more than 3 words"),
+                      ("mixed_keywords", "sharing a word with another block")):
+        if a.get(key):
+            lines.append(f"  keywords {what}: {', '.join(a[key])}")
     for db, status in a["status"].items():
         hits = a["counts"].get(db)
         lines.append(f"  {db}: {hits if hits is not None else 'count failed'} hits -> {status}")
+    if a.get("short"):
+        lines.append(f"  all databases together: {a['total']} hits -> too few "
+                     f"(at least {a['broaden_below']} wanted)")
     return "\n".join(lines)
 
 
 def build_refine_prompt(protocol: dict, attempts: list[dict], *, max_records: int,
-                        max_hits: int, min_hits: int) -> str:
+                        max_hits: int, min_hits: int, broaden_below: int = 0) -> str:
+    broaden = (
+        f"If all databases together have fewer than {broaden_below} hits (too few: eligible "
+        "studies are probably missed), broaden. These are the ONLY allowed moves:\n"
+        "  (a) remove the outcome block (unless it is fixed, added by code);\n"
+        "  (b) replace a multi-word phrase with its key single word or a shorter established "
+        "phrase (e.g. 'depressive symptom scores' -> 'depressive symptoms'; 'classify "
+        "images' -> 'image', 'classification', each in the block of its concept);\n"
+        "  (c) add common synonyms, abbreviations or product/brand names that authors write "
+        "in titles and abstracts.\n"
+        "  Not allowed: adding a block, removing or changing a block fixed by code.\n"
+    ) if broaden_below else ""
     return (
         build_prompt(protocol, max_records)
         + "\nThe previous plan(s) were run and the databases returned these hit counts "
@@ -187,8 +276,11 @@ def build_refine_prompt(protocol: dict, attempts: list[dict], *, max_records: in
         "use (e.g. 'elderly', 'depressive symptoms'). MeSH headings are not keywords: keep "
         "them (e.g. Aged is the correct heading for 65 and over).\n"
         "If too narrow: add synonyms, or drop the least essential block.\n"
+        + broaden +
         "List every keyword you removed in removed_terms and every keyword you rewrote in "
         "changed_terms, with a one-line reason each.\n"
+        "Blocks marked (fixed, added by code) are set by the protocol: removing or changing "
+        "their terms has no effect.\n"
         "The blocks are shared by all databases. A specialised database may legitimately "
         "have few hits on this topic: do not broaden the whole search only for it when the "
         "other databases are in range.\n"
@@ -210,6 +302,75 @@ def overlap(concepts: list[dict]) -> list[str]:
         for k in {k.lower() for k in c["keywords"]}:
             seen[k] = -1 if k in seen and seen[k] != i else i
     return sorted(k for k, v in seen.items() if v == -1)
+
+
+def _word(w: str) -> str:
+    """Lower case, plural "s" removed (devices -> device, not class -> clas)."""
+    w = w.lower()
+    return w[:-1] if len(w) > 3 and w.endswith("s") and not w.endswith("ss") else w
+
+
+def _words(term: str) -> list[str]:
+    return [_word(w) for w in term.replace("-", " ").replace("/", " ").split()]
+
+
+def _norm(term: str) -> str:
+    return " ".join(_words(term))
+
+
+def _covers(a: str, b: str) -> bool:
+    """Two keywords name the same thing: one's words are a subset of the other's
+    ('device' / 'wrist-worn devices'), or they are the same once spaces are removed
+    ('smart watch' / 'smartwatch')."""
+    wa, wb = set(_words(a)), set(_words(b))
+    return bool(wa and wb) and (wa <= wb or wb <= wa or
+                                "".join(_words(a)) == "".join(_words(b)))
+
+
+def is_metric_block(keywords: list[str]) -> bool:
+    """Outcome block made of measurement terms (Part 10c, fix 3)."""
+    return bool(keywords) and \
+        sum(_norm(k) in METRIC_TERMS for k in keywords) / len(keywords) >= METRIC_SHARE
+
+
+def merge_setting(concepts: list[Concept]) -> tuple[list[Concept], dict | None]:
+    """Part 10c, fix 3: an LLM setting block that repeats the intervention (half of its
+    keywords covered by an intervention keyword) is merged into the intervention block:
+    the covered keywords are dropped as duplicates, the others are OR-ed with the
+    intervention keywords. Returns the blocks and what was done (None: no merge)."""
+    setting = next((c for c in concepts if c.role == "setting"), None)
+    inter = next((c for c in concepts if c.role == "intervention"), None)
+    if setting is None or inter is None:
+        return concepts, None
+    covered = [k for k in setting.keywords if any(_covers(k, i) for i in inter.keywords)]
+    if len(covered) / len(setting.keywords) < SETTING_OVERLAP:
+        return concepts, None
+    added = [k for k in setting.keywords if k not in covered]
+    merged = inter.model_copy(update={
+        "keywords": inter.keywords + added,
+        "mesh_terms": inter.mesh_terms + [m for m in setting.mesh_terms
+                                          if m not in inter.mesh_terms]})
+    out = [merged if c is inter else c for c in concepts if c is not setting]
+    return out, {"covered": covered, "added": added}
+
+
+def keyword_flags(concepts: list[dict]) -> dict[str, list[str]]:
+    """Part 10c, fix 2 (audit and refine prompt; nothing is changed): keywords longer than
+    ``MAX_KEYWORD_WORDS`` words, and keywords that share a content word with another
+    block (a phrase joining two concepts, e.g. 'ECG classifiers' in the model block)."""
+    blocks = [c for c in concepts if c.get("role") != "design"]
+    llm_blocks = [c for c in blocks if not c.get("fixed")]   # the LLM cannot change the rest
+    long = [k for c in llm_blocks for k in c["keywords"]
+            if len(k.split()) > MAX_KEYWORD_WORDS]
+    vocab = [{w for k in c["keywords"] for w in _words(k) if w not in _STOP} for c in blocks]
+    mixed = []
+    for i, c in enumerate(blocks):
+        if c.get("fixed"):
+            continue
+        others = set().union(*(v for j, v in enumerate(vocab) if j != i))
+        mixed += [k for k in c["keywords"]
+                  if len(k.split()) > 1 and set(_words(k)) & others]
+    return {"long_keywords": long, "mixed_keywords": sorted(set(mixed), key=str.lower)}
 
 
 def term_diff(old: list[dict], new: list[dict]) -> dict[str, list[str]]:
@@ -245,9 +406,44 @@ def out_of_range(attempt: dict) -> int:
 
 def choose_attempt(attempts: list[dict]) -> dict:
     """Fewest databases out of range; ties go to the latest attempt, except an attempt
-    flagged ``no_progress``: it narrowed nothing, so it never beats an equal earlier one
-    (it may still have dropped useful terms)."""
-    return min(reversed(attempts), key=lambda a: (out_of_range(a), bool(a.get("no_progress"))))
+    flagged ``no_progress`` or ``broaden_failed``: it did not move the counts the way it
+    was asked to, so it never beats an equal earlier one (it may still have dropped
+    useful terms)."""
+    return min(reversed(attempts), key=lambda a: (
+        out_of_range(a), bool(a.get("no_progress") or a.get("broaden_failed"))))
+
+
+def rose(previous: dict, current: dict, threshold: float = MIN_PROGRESS) -> bool:
+    """Part 10c: a broadening attempt must raise the total hits by ``threshold``."""
+    return current["total"] > previous["total"] * (1 + threshold)
+
+
+def drop_generic(topic: list[Concept]) -> tuple[list[Concept], list[str]]:
+    """Part 10c: remove single-word generic task terms (``TASK_TERMS``) from the LLM's
+    blocks; a block left with no keyword is dropped. Returns the blocks and the removed
+    keywords."""
+    removed = [k for c in topic for k in c.keywords if _norm(k) in TASK_TERMS]
+    out = []
+    for c in topic:
+        kept = [k for k in c.keywords if _norm(k) not in TASK_TERMS]
+        if kept:
+            out.append(c.model_copy(update={"keywords": kept}) if len(kept) < len(c.keywords)
+                       else c)
+    return out, removed
+
+
+def code_blocks(topic: list[Concept]) -> tuple[list[Concept], list[str], dict | None,
+                                               list[str]]:
+    """Part 10c, on the LLM's own blocks (fixed roles are already removed): drop generic
+    task words, drop an outcome block of measurement terms, merge a setting block that
+    repeats the intervention. Returns the blocks, the dropped outcome keywords, the merge
+    and the removed generic words."""
+    topic, generic = drop_generic(topic)
+    dropped = [k for c in topic if c.role == "outcome" and is_metric_block(c.keywords)
+               for k in c.keywords]
+    topic = [c for c in topic if not (c.role == "outcome" and is_metric_block(c.keywords))]
+    topic, merged = merge_setting(topic)
+    return topic, dropped, merged, generic
 
 
 def sum_usage(usages: list[Usage]) -> dict:
@@ -289,13 +485,14 @@ def merge_blocks(topic: list[Concept], fixed: list[Concept]) -> list[Concept]:
 
 
 def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_records: int = 3000,
-                         min_hits: int = 20, max_refinements: int = 2,
+                         min_hits: int = 20, max_refinements: int = 2, broaden_below: int = 0,
                          contact_email: str | None = None,
                          env: Mapping[str, str] | None = None):
     """Build the stage. Without ``http`` hit counts are not checked (one LLM call, no
     network): useful in tests of other stages; real runs always pass ``http``.
 
-    ``max_records`` is both the download ceiling and the upper end of the "ok" range."""
+    ``max_records`` is both the download ceiling and the upper end of the "ok" range.
+    ``broaden_below`` (Part 10c; 0 = off): total hits under which the search broadens."""
     max_hits = max_records
 
     def search_strategy(state: ReviewState) -> dict:
@@ -315,6 +512,7 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
             plan, usage = llm.call_with_usage(schema, prompt, agent="search_strategy")
             usages.append(usage)
             topic, dropped = topic_concepts(plan, fixed_roles)
+            topic, outcome_dropped, merged, generic = code_blocks(topic)
             final = merge_blocks(topic, fixed) + ([design] if design else [])
             queries = build_queries(final, databases)
             concepts = [c.model_dump() | ({"fixed": True} if c in fixed else {})
@@ -326,8 +524,12 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
                        "overlap": overlap(concepts), "llm_design_blocks_dropped": dropped,
                        "llm_blocks_replaced": [c.model_dump() for c in plan.concepts
                                                if c.role in fixed_roles],
-                       # The protocol names a setting but no block searches it.
-                       "setting_block_missing": bool(setting) and not any(
+                       "outcome_dropped": outcome_dropped, "setting_merged": merged,
+                       "generic_removed": generic,
+                       **keyword_flags(concepts),
+                       # The protocol names a setting but no block searches it (a setting
+                       # merged into the intervention block is searched there).
+                       "setting_block_missing": bool(setting) and not merged and not any(
                            c.role == "setting" for c in final)}
             if isinstance(plan, RefinedPlan):
                 attempt.update(
@@ -345,11 +547,26 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
                            status=classify(counts, errors, max_hits=max_hits,
                                            min_hits=min_hits))
             bad = {db: s for db, s in attempt["status"].items() if s in (TOO_BROAD, TOO_NARROW)}
-            if not bad:
+            # Part 10c: too few hits in total to fill the screening (an upper bound of the
+            # unique records: duplicates are removed later, at retrieval).
+            total = sum(counts.values())
+            short = bool(broaden_below) and not errors and TOO_BROAD not in bad.values() \
+                and total < broaden_below
+            attempt.update(total=total, short=short, broaden_below=broaden_below)
+            if not bad and not short:
                 attempt["reason"] = "all databases within range"
                 break
-            summary = ", ".join(f"{db} {s} ({counts[db]} hits)" for db, s in bad.items())
-            if number > 1 and no_progress(attempts[-2], attempt):
+            summary = ", ".join([f"{db} {s} ({counts[db]} hits)" for db, s in bad.items()]
+                                + ([f"{total} hits in all databases, below {broaden_below}: "
+                                    "too few"] if short else []))
+            previous = attempts[-2] if number > 1 else None
+            if previous is not None and previous.get("short") and not rose(previous, attempt):
+                attempt["broaden_failed"] = True
+                attempt["reason"] = (f"{summary}; broadening did not raise the total by "
+                                     f"{MIN_PROGRESS:.0%} ({previous['total']} -> {total}), "
+                                     "refinement stopped")
+                break
+            if previous is not None and no_progress(previous, attempt):
                 attempt["no_progress"] = True
                 attempt["reason"] = (f"{summary}; no progress (counts changed by less than "
                                      f"{MIN_PROGRESS:.0%}), refinement stopped")
@@ -363,7 +580,8 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
                 break
             attempt["reason"] = f"{summary}; refinement requested"
             prompt = build_refine_prompt(protocol, attempts, max_records=max_records,
-                                         max_hits=max_hits, min_hits=min_hits)
+                                         max_hits=max_hits, min_hits=min_hits,
+                                         broaden_below=broaden_below if short else 0)
 
         chosen = choose_attempt(attempts)
         hits = chosen["counts"]
@@ -375,7 +593,8 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
             "rationale": chosen["rationale"],
             "counts": chosen["counts"],
             "chosen_attempt": chosen["attempt"],
-            "targets": {"min_hits": min_hits, "max_records": max_records},
+            "targets": {"min_hits": min_hits, "max_records": max_records,
+                        "broaden_below": broaden_below},
             "design_filter": design_mapping,
             # Expected from the counts; the retrieval stage records the actual numbers.
             "capped": {db: n > max_records for db, n in hits.items()},
@@ -396,6 +615,14 @@ def make_search_strategy(llm: LLM, http: HttpClient | None = None, *, max_record
                            "changed_terms": [f"{t['old']} -> {t['new']}" for a in attempts
                                              for t in a.get("changed_terms", [])],
                            "stopped_no_progress": any(a.get("no_progress") for a in attempts),
+                           "broaden_below": broaden_below,
+                           "broadening_requested": any(a.get("short") for a in attempts),
+                           "broaden_failed": any(a.get("broaden_failed") for a in attempts),
+                           "outcome_dropped": chosen["outcome_dropped"],
+                           "generic_removed": chosen["generic_removed"],
+                           "setting_merged": chosen["setting_merged"],
+                           "long_keywords": chosen["long_keywords"],
+                           "mixed_keywords": chosen["mixed_keywords"],
                            "design_filter": design_mapping,
                            "fixed_blocks": sorted(fixed_roles),
                            "setting_block_missing": chosen["setting_block_missing"],

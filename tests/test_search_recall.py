@@ -36,7 +36,7 @@ def test_hits_below_the_ceiling_are_ok_and_fully_downloaded():
     s = out["search_strategy"]
     assert len(llm.calls) == 1 and s["attempts"][0]["status"] == {"openalex": "ok",
                                                                   "pubmed": "ok"}
-    assert s["targets"] == {"min_hits": 20, "max_records": 3000}
+    assert s["targets"] == {"min_hits": 20, "max_records": 3000, "broaden_below": 0}
     assert s["capped"] == {"openalex": False, "pubmed": False}
     assert s["not_retrieved"] == {"openalex": 0, "pubmed": 0}
 

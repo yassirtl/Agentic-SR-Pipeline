@@ -44,7 +44,8 @@ def build_stages(cfg: Config, llm: LLM, run_dir: str | Path, *, topic: dict | No
         "planner": make_planner(llm, load_template(cfg.protocol_template), topic=topic),
         "search_strategy": make_search_strategy(
             llm, http, max_records=cfg.max_records, min_hits=cfg.min_hits,
-            max_refinements=cfg.max_refinements, **common),
+            max_refinements=cfg.max_refinements,
+            broaden_below=cfg.search_broaden_below(), **common),
         "retrieval": make_retrieval(http, max_records=cfg.max_records, search=search,
                                     **common),
         "ta_screening": make_ta_screening(llm, workers=cfg.screening_workers,

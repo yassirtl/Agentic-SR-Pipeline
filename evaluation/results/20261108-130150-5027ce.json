@@ -1,0 +1,127 @@
+{
+  "run_id": "20261108-130150-5027ce",
+  "topic": "T2",
+  "label_problems": [],
+  "completeness": {
+    "extraction_completeness": {
+      "studies": 44,
+      "scope": "topic fields",
+      "fields": 572,
+      "reported": 167,
+      "share_reported": 0.292,
+      "by_text": {
+        "abstract only": {
+          "reported": 108,
+          "fields": 429,
+          "share": 0.2517
+        },
+        "full text": {
+          "reported": 59,
+          "fields": 143,
+          "share": 0.4126
+        }
+      },
+      "topic_fields": [
+        "arithmetic",
+        "classes",
+        "classification_metrics",
+        "clock",
+        "dataset",
+        "latency",
+        "memory",
+        "model",
+        "operations",
+        "parameters",
+        "partition",
+        "platform",
+        "power_energy"
+      ],
+      "all_fields": {
+        "reported": 383,
+        "fields": 1364,
+        "share": 0.2808
+      }
+    },
+    "prisma_consistency": {
+      "consistent": true,
+      "checks": {
+        "identified - not downloaded - duplicates - automation - not screened = screened": true,
+        "screened - excluded = sought": true,
+        "sought - excluded = included": true
+      }
+    },
+    "critic": {
+      "passed": true,
+      "blockers": 0,
+      "warnings": 4,
+      "loops_used": 0
+    }
+  },
+  "accuracy": {},
+  "consistency": {
+    "screener_agreement": {
+      "ta": {
+        "pairs": 96,
+        "kappa": 0.1004,
+        "agreement": 0.4167,
+        "resolved_by": {
+          "adjudicator": 59,
+          "agreement": 37,
+          "d_title_rule": 4
+        },
+        "adjudicated_share": 0.59,
+        "quotes_not_found": 15,
+        "llm_errors": 0
+      },
+      "ft": {
+        "pairs": 64,
+        "kappa": 0.7876,
+        "agreement": 0.9062,
+        "resolved_by": {
+          "agreement": 55,
+          "adjudicator": 9
+        },
+        "adjudicated_share": 0.1406,
+        "quotes_not_found": 23,
+        "llm_errors": 0
+      }
+    },
+    "coordinator": {
+      "steps": 9,
+      "decisions": {
+        "accepted": 9
+      },
+      "refusals": [],
+      "budget_exhausted": false,
+      "stages_run": [
+        "planner",
+        "search_strategy",
+        "retrieval",
+        "ta_screening",
+        "ft_screening",
+        "extraction",
+        "synthesis",
+        "critic"
+      ]
+    }
+  },
+  "time": {
+    "time_cost": {
+      "seconds": 3583.0,
+      "hours": 1.0,
+      "seconds_note": "wall clock from start to finish: includes human pauses and the time between a crash and its --resume",
+      "llm_calls": 1179,
+      "llm_calls_cached": 17,
+      "cost_usd": 0.5262,
+      "cost_is_lower_bound": false,
+      "cost_per_screened_record": 0.0053,
+      "counts": {
+        "screened": 100,
+        "full_text": 64,
+        "included": 44
+      },
+      "manual": "manual_effort.yaml has empty rates: no manual estimate computed",
+      "benchmark": "Haddaway & Westgate 2019: an average environmental systematic review takes about 164 full-time-equivalent days (66 CEE reviews, 2012-2017)."
+    }
+  }
+}
