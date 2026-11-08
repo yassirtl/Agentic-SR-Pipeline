@@ -273,3 +273,15 @@ def test_cli_sample_writes_to_tracked_folder(tmp_path, monkeypatch):
     monkeypatch.setattr(cli, "EVAL_DIR", tmp_path / "evaluation")
     assert main(["sample", "run-a", "--n", "2"]) == 0
     assert (tmp_path / "evaluation" / "labels" / "run-a" / "labels.csv").exists()
+
+
+def test_extraction_completeness_counts_topic_fields_only():
+    state = make_state()
+    state["protocol"] = {**PROTOCOL, "extraction_fields": {"age": "Age?"}}
+    e = run_metrics({"state": state, "gold_rows": None, "labels": None, "manual": None,
+                     "summary": {}}, ["extraction_completeness"])
+    e = e["completeness"]["extraction_completeness"]
+    assert e["scope"] == "topic fields" and e["topic_fields"] == ["age"]
+    assert (e["reported"], e["fields"], e["share_reported"]) == (1, 2, 0.5)
+    assert e["by_text"]["full text"] == {"reported": 0, "fields": 1, "share": 0.0}
+    assert e["all_fields"] == {"reported": 3, "fields": 4, "share": 0.75}

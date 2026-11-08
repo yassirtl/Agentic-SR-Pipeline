@@ -86,7 +86,7 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 
 | Criterion | Metrics |
 |---|---|
-| Completeness | gold studies kept at each stage (coverage, search, screening limit, title/abstract, full text) with the reason each one was lost; recall vs all gold and vs gold present in our databases; extraction fields reported with a verified quote; PRISMA arithmetic checks; critic outcome |
+| Completeness | gold studies kept at each stage (coverage, search, screening limit, title/abstract, full text) with the reason each one was lost; recall vs all gold and vs gold present in our databases; extraction fields reported with a verified quote (T2/T3: only the topic's own engineering fields; all fields shown apart); PRISMA arithmetic checks; critic outcome |
 | Accuracy | gold share of our includes (a lower bound on precision); title/abstract screening vs a human-labelled sample: accuracy, sensitivity, specificity, kappa, disagreements |
 | Inter-agent consistency | kappa and agreement of screener A vs B per stage, share adjudicated; coordinator decisions and guardrail refusals |
 | Time savings | run time, LLM calls, cost; against a manual estimate when `evaluation/manual_effort.yaml` is filled with sourced rates |

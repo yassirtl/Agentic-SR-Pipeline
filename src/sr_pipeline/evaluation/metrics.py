@@ -3,7 +3,8 @@
 The course asks for four criteria; each metric belongs to one of them:
 
 - **completeness**: ``gold_recall`` (stage-by-stage funnel, ``recall.py``),
-  ``extraction_completeness`` (fields reported with a verified quote),
+  ``extraction_completeness`` (fields reported with a verified quote; only the
+  topic's own fields when the protocol declares them),
   ``prisma_consistency`` (the diagram's arithmetic checks), ``critic``;
 - **accuracy**: ``gold_precision`` (lower bound), ``human_labels`` (screening vs the
   user's labelled sample, ``labels.py``);
@@ -63,24 +64,45 @@ def gold_recall(ctx: dict) -> dict | None:
 
 @metric("extraction_completeness", "completeness")
 def extraction_completeness(ctx: dict) -> dict | None:
+    """Share of fields reported with a verified quote. When the protocol declares its own
+    ``extraction_fields`` (engineering topics T2/T3), only those count: the generic
+    clinical fields (country, age, sex, comparator, follow-up...) do not apply to a
+    hardware study, so counting them would measure the topic, not the extraction. The
+    count over every field is kept under ``all_fields``."""
     state = ctx["state"]
     ids = {p["paper_id"] for p in included_papers(state)}
     exts = [e for e in latest(state.get("extractions") or []) if e["paper_id"] in ids]
     if not exts:
         return None
-    status = Counter(f.get("status") for e in exts for f in (e.get("fields") or {}).values())
-    total = sum(status.values())
-    by_text = {}
-    for e in exts:
-        key = "abstract only" if "abstract_only" in (e.get("flags") or []) else "full text"
-        c = by_text.setdefault(key, [0, 0])
-        for f in (e.get("fields") or {}).values():
-            c[0] += f.get("status") == "reported"
-            c[1] += 1
-    return {"studies": len(exts), "fields": total, "reported": status.get("reported", 0),
-            "share_reported": _ratio(status.get("reported", 0), total),
-            "by_text": {k: {"reported": a, "fields": b, "share": _ratio(a, b)}
-                        for k, (a, b) in by_text.items()}}
+    topic_keys = set((state.get("protocol") or {}).get("extraction_fields") or {})
+
+    def count(keys):
+        status = Counter(f.get("status") for e in exts
+                         for k, f in (e.get("fields") or {}).items()
+                         if keys is None or k in keys)
+        by_text = {}
+        for e in exts:
+            key = "abstract only" if "abstract_only" in (e.get("flags") or []) else "full text"
+            c = by_text.setdefault(key, [0, 0])
+            for k, f in (e.get("fields") or {}).items():
+                if keys is None or k in keys:
+                    c[0] += f.get("status") == "reported"
+                    c[1] += 1
+        total = sum(status.values())
+        return {"fields": total, "reported": status.get("reported", 0),
+                "share_reported": _ratio(status.get("reported", 0), total),
+                "by_text": {k: {"reported": a, "fields": b, "share": _ratio(a, b)}
+                            for k, (a, b) in by_text.items()}}
+
+    scoped = count(topic_keys or None)
+    out = {"studies": len(exts), "scope": "topic fields" if topic_keys else "all fields",
+           **scoped}
+    if topic_keys:
+        out["topic_fields"] = sorted(topic_keys)
+        a = count(None)
+        out["all_fields"] = {"reported": a["reported"], "fields": a["fields"],
+                             "share": a["share_reported"]}
+    return out
 
 
 @metric("prisma_consistency", "completeness")

@@ -14,6 +14,8 @@
 # risk-of-bias instrument, applied to every study instead of RoB 2 / QUADAS-2 / checklist).
 # A topic's `years` replace the template's: `recent` does not apply, so start is explicit.
 # T1 criteria: to copy from the paper before its run; until then the Planner's are kept.
+# Extraction completeness (Part 10): when a topic sets extraction_fields (T2, T3), only
+# those fields count; the generic clinical fields are reported apart (all_fields).
 
 T1:
   question: How accurate are smartwatches at detecting cardiac arrhythmias?
@@ -68,7 +70,7 @@ T2:
   # Last 5 years: the plan says 2021-11 to now; the protocol window is in years, so 2021.
   years: {start: 2021, end_date: null}
   search_date_source: 'no gold review: the run date is the search date'
-  # Our own criteria (user + PLAN §4b), not a review's: to confirm at approval.
+  # Our own criteria (user + PLAN §4b), not a review's: confirmed by the user 2026-11-08.
   inclusion_criteria:
     - {text: Machine-learning model that classifies ECG signals or heartbeats, label: not an ECG classifier}
     - text: The model separates abnormal from normal ECG (binary output, or abnormal classes reported against normal)
@@ -91,8 +93,8 @@ T2:
 
 T3:
   question: >-
-    Which machine-learning models classify ECG into several cardiac classes on embedded
-    devices (microcontroller, FPGA, ASIC), and how accurate and efficient are they?
+    Which machine-learning models classify ECG on embedded devices (microcontroller,
+    FPGA, ASIC or SoC), and how accurate and efficient are they?
   review: >-
     Arredondo-Velazquez 2026, Electronics 15(21):5046, doi 10.3390/electronics15215046
   gold: gold/T3.csv
@@ -124,8 +126,9 @@ T3:
     them. Their screening read only the first 100 records of each interface by relevance
     (498 screened of 2,622) plus 10 reports by citation chasing, so their list is not
     exhaustive. Their criteria do not require several classes (e.g. ref 37 ventricular
-    ectopic beats, ref 55 anomaly detection), so the question's "several cardiac classes"
-    is not a criterion here. IEEE Xplore is not one of our sources.
+    ectopic beats, ref 55 anomaly detection), so the question was aligned with their
+    scope on 2026-11-08 (user decision: "into several cardiac classes" dropped, SoC added
+    as in their criterion). IEEE Xplore is not one of our sources.
 
 # Development topic (old T3): tuned on in Parts 4-6d, not part of the held-out evaluation.
 # Its run 20261108-091009-f03123 was made as "T3": evaluate it with `--topic D0`.

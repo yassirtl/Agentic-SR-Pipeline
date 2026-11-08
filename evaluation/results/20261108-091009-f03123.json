@@ -307,6 +307,7 @@
     },
     "extraction_completeness": {
       "studies": 28,
+      "scope": "all fields",
       "fields": 392,
       "reported": 258,
       "share_reported": 0.6582,

@@ -112,8 +112,18 @@ def render(ctx: dict, results: dict) -> str:
         e = c["extraction_completeness"]
         parts = ", ".join(f"{k} {_pct(v['share'])} of {v['fields']}" for k, v in
                           e["by_text"].items())
-        lines += [f"Extraction: {e['reported']}/{e['fields']} fields reported with a verified "
-                  f"quote ({_pct(e['share_reported'])}) over {e['studies']} studies; {parts}.", ""]
+        if e.get("scope") == "topic fields":
+            a = e["all_fields"]
+            lines += [f"Extraction: {e['reported']}/{e['fields']} topic fields "
+                      f"({len(e['topic_fields'])} per study: the topic's own extraction "
+                      f"fields only) reported with a verified quote "
+                      f"({_pct(e['share_reported'])}) over {e['studies']} studies; {parts}. "
+                      f"All fields, incl. the generic clinical ones: {a['reported']}/"
+                      f"{a['fields']} ({_pct(a['share'])}).", ""]
+        else:
+            lines += [f"Extraction: {e['reported']}/{e['fields']} fields reported with a "
+                      f"verified quote ({_pct(e['share_reported'])}) over {e['studies']} "
+                      f"studies; {parts}.", ""]
     if "prisma_consistency" in c:
         p = c["prisma_consistency"]
         lines += [f"PRISMA arithmetic checks: {'all pass' if p['consistent'] else 'FAIL'} "
