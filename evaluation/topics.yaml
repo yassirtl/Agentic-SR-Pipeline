@@ -195,7 +195,7 @@ T3:
       evidence_terms: *cost_evidence
     - {text: Peer-reviewed journal or conference publication, label: not peer reviewed}
   exclusion_criteria: []
-  search_terms: {setting: *embedded_terms}
+  search_terms: {setting: *embedded_terms, outcome: []}   # no outcome facet, as in the review
   extraction_fields: *engineering_fields
   checklist_name: Five-domain instrument of Arredondo-Velazquez 2026 (Table 2)
   checklist_domains: *ecg_rob_domains
