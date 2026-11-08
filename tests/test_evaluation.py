@@ -239,11 +239,13 @@ def write_run(tmp_path, name, limit):
     return folder
 
 
-def test_cli_evaluate_and_compare(tmp_path, monkeypatch, capsys):
+def test_cli_evaluate_and_compare(tmp_path, monkeypatch):
     a = write_run(tmp_path, "run-a", 4)
     b = write_run(tmp_path, "run-b", 0)
     monkeypatch.setenv("SR_RUNS_DIR", str(tmp_path))
-    assert main(["evaluate", "run-a", "--metrics", "critic,time_cost,coordinator"]) == 0
+    assert main(["evaluate", "run-a", "--metrics", "critic,time_cost,coordinator",
+                 "--results", str(tmp_path / "results")]) == 0
+    assert (tmp_path / "results" / "run-a.md").exists()       # tracked copy
     md = (a / "evaluation" / "evaluation.md").read_text()
     assert "Critic: passed, 0 blockers, 2 warnings, 1 loops." in md
     assert "No human labels yet" in md
@@ -262,3 +264,12 @@ def test_years_explicit_null_start_means_no_limit():
     # a validated protocol re-validates to the same years (start is then explicit)
     y = YearRange.model_validate(YearRange(recent=5).model_dump(mode="json"))
     assert y.start == date.today().year - 5 and y.recent == 5
+
+
+def test_cli_sample_writes_to_tracked_folder(tmp_path, monkeypatch):
+    write_run(tmp_path, "run-a", 4)
+    monkeypatch.setenv("SR_RUNS_DIR", str(tmp_path))
+    import sr_pipeline.evaluation.__main__ as cli
+    monkeypatch.setattr(cli, "EVAL_DIR", tmp_path / "evaluation")
+    assert main(["sample", "run-a", "--n", "2"]) == 0
+    assert (tmp_path / "evaluation" / "labels" / "run-a" / "labels.csv").exists()

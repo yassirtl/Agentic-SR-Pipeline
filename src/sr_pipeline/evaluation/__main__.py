@@ -1,9 +1,10 @@
 """Evaluation command line (Part 10). No LLM, no network: reads a finished run folder.
 
   python -m sr_pipeline.evaluation sample   RUN [--n 30] [--seed 10]
-      blind labelling sheet: runs/<id>/evaluation/labels.csv + criteria.md
+      blind labelling sheet: evaluation/labels/<run_id>/labels.csv + criteria.md
+      (tracked in git: the labels are the user's work, runs/ is git-ignored)
   python -m sr_pipeline.evaluation evaluate RUN [--topic T3] [--labels FILE] [--metrics a,b]
-      runs/<id>/evaluation/evaluation.json + evaluation.md
+      runs/<id>/evaluation/evaluation.json + .md, copied to evaluation/results/<run_id>.*
   python -m sr_pipeline.evaluation compare  RUN RUN [...] [--out FILE]
       side-by-side table (e.g. --limit 100 vs a larger limit on one topic)
 
@@ -21,6 +22,12 @@ from .labels import make_sheet, read_labels
 from .metrics import load_manual, run_metrics
 from .recall import load_gold_rows
 from .topics import TOPICS_FILE, load_topic
+
+EVAL_DIR = TOPICS_FILE.parent          # evaluation/ (tracked)
+
+
+def labels_dir(run_id: str) -> Path:
+    return EVAL_DIR / "labels" / run_id
 
 
 def run_dir(arg: str, runs: Path) -> Path:
@@ -43,7 +50,10 @@ def context(folder: Path, topic_id: str | None = None, labels: Path | None = Non
     topic_id = topic_id or run.get("topic") or (state.get("protocol") or {}).get("topic")
     topic = load_topic(topic_id) if topic_id else None
     gold_rows = load_gold_rows(TOPICS_FILE.parent / topic["gold"]) if topic else None
-    labels = labels or folder / "evaluation" / "labels.csv"
+    if labels is None:
+        labels = labels_dir(folder.name) / "labels.csv"
+        old = folder / "evaluation" / "labels.csv"   # first sheets were written there
+        labels = labels if labels.exists() or not old.exists() else old
     human, problems = read_labels(labels) if labels.exists() else ({}, [])
     return {"folder": folder, "state": state, "run": run, "summary": summary,
             "topic": topic, "gold_rows": gold_rows, "labels": human or None,
@@ -189,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("run")
     s.add_argument("--n", type=int, default=30)
     s.add_argument("--seed", type=int, default=10)
+    s.add_argument("--out", type=Path, help="folder (default evaluation/labels/<run_id>)")
     e = sub.add_parser("evaluate", help="compute the metrics of one run")
     e.add_argument("run")
     e.add_argument("--topic")
@@ -196,6 +207,8 @@ def main(argv: list[str] | None = None) -> int:
     e.add_argument("--metrics", help="comma-separated names (default: topic's, else all)")
     e.add_argument("--manual", type=Path, help="manual effort file "
                    "(default evaluation/manual_effort.yaml)")
+    e.add_argument("--results", type=Path, help="tracked copy folder "
+                   "(default evaluation/results)")
     c = sub.add_parser("compare", help="side-by-side table of several runs")
     c.add_argument("runs", nargs="+")
     c.add_argument("--out", type=Path)
@@ -205,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "sample":
         folder = run_dir(args.run, runs)
         state = _json(folder / "state.json")
-        out = make_sheet(state, folder / "evaluation", args.n, args.seed)
+        out = make_sheet(state, args.out or labels_dir(folder.name), args.n, args.seed)
         print(f"{out['records']} records (seed {out['seed']}) → {out['sheet']}\n"
               f"criteria → {out['criteria']}\nWrite include/exclude in the 'human' column, "
               f"then: python -m sr_pipeline.evaluation evaluate {args.run}")
@@ -231,8 +244,14 @@ def main(argv: list[str] | None = None) -> int:
     (out / "evaluation.md").write_text(md)
     for p in ctx["label_problems"]:
         print(f"labels: {p}", file=sys.stderr)
+    results_dir = args.results or EVAL_DIR / "results"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    for ext in ("json", "md"):
+        (results_dir / f"{folder.name}.{ext}").write_text(
+            (out / f"evaluation.{ext}").read_text())
     print(md)
-    print(f"→ {out / 'evaluation.json'}, {out / 'evaluation.md'}")
+    print(f"→ {out / 'evaluation.json'}, {out / 'evaluation.md'}; "
+          f"copied to {results_dir}/{folder.name}.*")
     return 0
 
 

@@ -29,7 +29,7 @@ Python 3.11, macOS or Linux.
 ```bash
 python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest -q            # 284 tests, no network, no API key (scripted fake LLM)
+.venv/bin/pytest -q            # 285 tests, no network, no API key (scripted fake LLM)
 ```
 
 Embeddings use the OpenAI API (`text-embedding-3-small`), so no PyTorch is needed.
@@ -77,8 +77,8 @@ Each run writes `runs/<run_id>/`:
 The pipeline is compared with three published reviews (`evaluation/topics.yaml`, gold lists in `evaluation/gold/`, see its README). No LLM and no network are used.
 
 ```bash
-.venv/bin/python -m sr_pipeline.evaluation evaluate RUN_ID            # metrics → runs/<id>/evaluation/
-.venv/bin/python -m sr_pipeline.evaluation sample RUN_ID              # blind sheet of 30 abstracts to label
+.venv/bin/python -m sr_pipeline.evaluation evaluate RUN_ID            # metrics → runs/<id>/evaluation/ + evaluation/results/
+.venv/bin/python -m sr_pipeline.evaluation sample RUN_ID              # blind sheet of 30 abstracts → evaluation/labels/<id>/
 .venv/bin/python -m sr_pipeline.evaluation compare RUN_A RUN_B        # side by side (e.g. two --limit values)
 ```
 
@@ -99,7 +99,7 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 | T2 LLMs for abstract screening | Kim 2025 (14 studies) | pending | | | |
 | T3 exercise, depression, older adults | Li 2024 (15 articles) | `--topic T3 --limit 100` | 15 → 11 → 7 → 3 → 2 → 1 | 28 | $0.37 |
 
-T3 (first full run, 2026-11-08): the search found 7 of the 11 gold articles our databases hold (64%); 4 gold articles are in Chinese journals indexed by neither OpenAlex nor PubMed. With the default limit of the 100 most relevant records (of 3,631), 4 of the 7 found were never screened (best database ranks 56–382). Of the 3 screened, Makizako 2019 was included, Shahidi 2011 (laughter yoga vs exercise) and Huang 2015 (exercise vs CBT, abstract only) were excluded on "interventions beyond exercise". So the losses come from the screening limit and the search first, then from how the criteria are read. Screener agreement was low (kappa 0.25 at title/abstract, 0.19 at full text: the strict and lenient screeners are designed to differ), the critic passed with 3 warnings, and the PRISMA counts add up. These results are from one topic; T1/T2 runs, a run without the screening limit and a human-labelled sample are still to come.
+T3 (first full run, 2026-11-08): the search found 7 of the 11 gold articles our databases hold (64%); 4 gold articles are in Chinese journals indexed by neither OpenAlex nor PubMed. With the default limit of the 100 most relevant records (of 3,631), 4 of the 7 found were never screened (best database ranks 56–382). Of the 3 screened, Makizako 2019 was included; Shahidi 2011 and Huang 2015 were excluded on "interventions beyond exercise": both are three-arm trials (exercise / laughter yoga or CBT / control) judged by their extra arm instead of the exercise-vs-control pair, a screening error. So the losses come from the screening limit and the search first, then from one screening error repeated. Screener agreement was low (kappa 0.25 at title/abstract, 0.19 at full text: the strict and lenient screeners are designed to differ), the critic passed with 3 warnings, and the PRISMA counts add up. These results are from one topic; T1/T2 runs, a run without the screening limit and a human-labelled sample are still to come.
 
 ## Layout
 
