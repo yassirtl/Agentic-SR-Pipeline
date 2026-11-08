@@ -58,7 +58,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 
 from ..forest import forest_plot, paired_forest
-from ..llm import LLM, is_fatal
+from ..llm import LLM, error_signature, is_fatal
 from ..meta import ci, dersimonian_laird, hedges_g, pooled_proportion, sign_test, wilson
 from ..protocol import DEFAULT_METRIC_ORDER, better_direction, metric_order
 from ..state import ReviewState, latest, stage_round
@@ -679,9 +679,25 @@ def required_items(groups: list[dict]) -> list[str]:
     return items
 
 
+# Part 10d: above this many studies the narrative groups studies in summary sentences (seen
+# live: 231 studies, the answer hit the output cap). Below it the prompt is unchanged, so
+# smaller runs keep their cached answers.
+MANY_STUDIES = 30
+
+
+def many_studies_rule(n: int) -> str:
+    if n <= MANY_STUDIES:
+        return ""
+    return (f"\nThis review has {n} studies: do not write one sentence per study. Write "
+            "summary sentences that group studies (e.g. by model family, target or direction "
+            "of result) and list every study they summarise in 'studies'; describe a single "
+            "study only when it is required below or stands out. At most about 40 sentences "
+            "in total.\n")
+
+
 def narrative_prompt(protocol: dict, evidence: str, feedback: list[str],
-                     required: list[str] = ()) -> str:
-    fix = ""
+                     required: list[str] = (), n_studies: int = 0) -> str:
+    fix = many_studies_rule(n_studies)
     if required:
         fix += ("\nRequired in this draft (checked by code):\n"
                 + "\n".join(f"- {r}" for r in required) + "\n")
@@ -841,10 +857,11 @@ def make_synthesis(llm: LLM, *, out_dir: str | Path, min_pool: int = MIN_POOL):
         feedback = critic_feedback(state, rnd)
         labels = [s["label"] for s in studies]
         sections = [oid for oid, _ in outcomes(protocol)] + ["overall"]
-        usage, flags = [], []
+        usage, flags, failed = [], [], None
         try:
             ans, u = llm.call_with_usage(Narrative, narrative_prompt(
-                protocol, evidence, feedback, required_items(groups)), agent="synthesis")
+                protocol, evidence, feedback, required_items(groups), len(studies)),
+                agent="synthesis")
             usage.append(u)
             sentences = check_narrative([s.model_dump() for s in ans.sentences], labels,
                                         evidence, sections)
@@ -856,6 +873,7 @@ def make_synthesis(llm: LLM, *, out_dir: str | Path, min_pool: int = MIN_POOL):
             if is_fatal(exc):
                 raise
             flags.append(f"llm_error: {type(exc).__name__}: {exc}"[:300])
+            failed = error_signature(exc)
             sentences, heterogeneity = [], []
         checks = Counter(f.split(":")[0] for s in [*sentences, *heterogeneity]
                          for f in s["flags"])
@@ -882,7 +900,10 @@ def make_synthesis(llm: LLM, *, out_dir: str | Path, min_pool: int = MIN_POOL):
                            "feedback_items": len(feedback), "flags": flags,
                            "plots": [g["plot"] for g in groups if g["plot"]]
                            + ([dta["plot"]] if dta and dta["plot"] else []),
-                           **_sum_usage(usage)}],
+                           **_sum_usage(usage),
+                           # Part 10d: the stage produced no text; the coordinator stops the
+                           # run when two runs in a row fail the same way.
+                           **({"failed": failed} if failed else {})}],
         }
 
     return synthesis

@@ -54,10 +54,18 @@ def loop_rule(proposed: str, state: ReviewState) -> str | None:
     """Code rule on the critic loop (Part 8): once the critic has judged the current
     synthesis, going back to synthesis is allowed only if its report says ``loop_back``
     (blockers found and loops left). Returns the refusal reason, or None. Without a QA
-    report (placeholder critic) there is no rule."""
+    report (placeholder critic) there is no rule.
+
+    Part 10d: a synthesis the critic has not judged yet is not re-run either (same inputs,
+    same result). Seen live (T3, --limit 500): after one critic round the coordinator ran
+    synthesis four more times in a row, the critic never in between."""
     completed = state.get("completed_stages", [])
     qa = state.get("qa_report")
-    if proposed != "synthesis" or not qa or not is_fresh("critic", completed):
+    if proposed != "synthesis" or not qa:
+        return None
+    if is_fresh("synthesis", completed) and not is_fresh("critic", completed):
+        return "the critic has not judged the current synthesis yet"
+    if not is_fresh("critic", completed):
         return None
     if qa.get("loop_back"):
         return None
@@ -86,6 +94,26 @@ def research_rule(proposed: str, state: ReviewState) -> str | None:
     if runs > MAX_RESEARCHES:
         return f"re-search budget spent ({runs - 1}/{MAX_RESEARCHES})"
     return None
+
+
+def repeated_failure(state: ReviewState) -> dict | None:
+    """Part 10d: the stage that ran last failed (its audit entry has ``failed``, an error
+    signature) and its previous run failed the same way: re-running it would only fail
+    again. Returns the audit entry that stops the run, or None. Seen live (T3, --limit 500):
+    synthesis hit the output cap five times in a row until the run was stopped by hand."""
+    runs = [e for e in state.get("audit_log", []) if e.get("node") in STAGES and e.get("event")]
+    if not runs or not runs[-1].get("failed"):
+        return None
+    last = runs[-1]
+    prev = next((e for e in reversed(runs[:-1]) if e["node"] == last["node"]), None)
+    if not prev or prev.get("failed") != last["failed"]:
+        return None
+    return {"node": "coordinator", "step": state.get("steps_taken", 0),
+            "event": "stopped: repeated failure", "stage": last["node"],
+            "error": last["failed"], "rounds": [prev.get("round"), last.get("round")],
+            "detail": (f"{last['node']} failed twice in a row with the same error; running it "
+                       "again would fail again. The run is stopped: fix the cause, then start "
+                       "a new run (steps already done are read from the LLM cache).")}
 
 
 RERUN_ALLOWED = ("search_strategy", "synthesis")  # own rules: research_rule, loop_rule
@@ -129,6 +157,9 @@ def coordinator_step(state: ReviewState, llm: LLM, max_steps: int = MAX_STEPS) -
             "audit_log": [{"node": "coordinator", "step": steps, "event": "budget exhausted",
                            "max_steps": max_steps}],
         }
+
+    if (stop := repeated_failure(state)):
+        return {"next_stage": END_SIGNAL, "audit_log": [stop]}
 
     completed = state.get("completed_stages", [])
     try:

@@ -11,6 +11,7 @@ returns the stored answer, without calling the API.
 
 import hashlib
 import json
+import re
 import threading
 import uuid
 from dataclasses import asdict, dataclass
@@ -82,6 +83,14 @@ def is_fatal(exc: BaseException) -> bool:
     return False
 
 
+def error_signature(exc: BaseException) -> str:
+    """Part 10d: what kind of failure this was, so two runs of a stage can be compared: the
+    exception type and the start of its message with numbers removed (token counts differ
+    between two identical length errors)."""
+    msg = re.sub(r"\d+", "#", str(exc).splitlines()[0] if str(exc) else "")
+    return f"{type(exc).__name__}: {msg[:120]}"
+
+
 def api_error_message(exc: BaseException) -> str | None:
     """One line for an OpenAI API error (None if ``exc`` is not one)."""
     try:
@@ -115,20 +124,32 @@ class _Base:
         return self.call_with_usage(schema, prompt, agent=agent)[0]
 
 
-def _default_chat_factory(model: str):
+# Output cap per call: every structured answer is short; seen live, a screening call looped
+# until the 16,384-token limit (5 minutes). A cap makes such a call fail fast (-> unresolved).
+DEFAULT_MAX_TOKENS = 4096
+# Part 10d: the synthesis answer grows with the number of studies (each sentence lists the
+# labels it cites). Seen live (T3, --limit 500, 231 studies): the narrative hit 4,096 tokens
+# five times in a row (LengthFinishReasonError, no text). 16,384 = gpt-4o-mini's maximum.
+MAX_TOKENS_BY_AGENT: dict[str, int] = {"synthesis": 16384}
+
+
+def max_tokens_for(agent: str) -> int:
+    return MAX_TOKENS_BY_AGENT.get(agent, DEFAULT_MAX_TOKENS)
+
+
+def _default_chat_factory(model: str, max_tokens: int = DEFAULT_MAX_TOKENS):
     # Imported lazily: ChatOpenAI needs an API key at construction.
     from langchain_openai import ChatOpenAI
 
-    # max_tokens: every structured answer is short; seen live, a screening call looped until
-    # the 16,384-token limit (5 minutes). A cap makes such a call fail fast (-> unresolved).
-    return ChatOpenAI(model=model, temperature=0, max_tokens=4096)
+    return ChatOpenAI(model=model, temperature=0, max_tokens=max_tokens)
 
 
 class OpenAILLM(_Base):
     """Real implementation: per-agent model, disk cache, token usage and cost.
 
     ``chat_factory(model)`` builds the chat model (ChatOpenAI by default); tests
-    pass a fake so no network or API key is needed.
+    pass a fake so no network or API key is needed. An agent with a larger output cap
+    (``MAX_TOKENS_BY_AGENT``) gets ``chat_factory(model, max_tokens)``.
     """
 
     def __init__(self, models: dict[str, str] | None = None, default: str = DEFAULT_MODEL,
@@ -139,17 +160,19 @@ class OpenAILLM(_Base):
         # Absolute by default, so every working directory shares one cache.
         self.cache_dir = Path(cache_dir) if cache_dir else find_project_root() / DEFAULT_CACHE_SUBDIR
         self.chat_factory = chat_factory
-        self._clients: dict[str, Any] = {}  # one client per model, built once
+        self._clients: dict[tuple[str, int], Any] = {}  # one per (model, cap), built once
         self._lock = threading.Lock()       # screening calls the LLM from several threads
 
     def model_for(self, agent: str) -> str:
         return self.models.get(agent, self.default)
 
-    def _client(self, model: str):
+    def _client(self, model: str, max_tokens: int = DEFAULT_MAX_TOKENS):
         with self._lock:
-            if model not in self._clients:
-                self._clients[model] = self.chat_factory(model)
-            return self._clients[model]
+            key = (model, max_tokens)
+            if key not in self._clients:
+                self._clients[key] = (self.chat_factory(model) if max_tokens == DEFAULT_MAX_TOKENS
+                                      else self.chat_factory(model, max_tokens))
+            return self._clients[key]
 
     def call_with_usage(self, schema: type[T], prompt: str, *, agent: str) -> tuple[T, Usage]:
         model = self.model_for(agent)
@@ -161,7 +184,8 @@ class OpenAILLM(_Base):
                           cost_usd=0.0, cached=True)
             return schema.model_validate(data["parsed"]), usage
 
-        out = self._client(model).with_structured_output(schema, include_raw=True).invoke(prompt)
+        client = self._client(model, max_tokens_for(agent))
+        out = client.with_structured_output(schema, include_raw=True).invoke(prompt)
         if out.get("parsing_error") is not None or out.get("parsed") is None:
             raise ValueError(f"structured output failed for {schema.__name__}: "
                              f"{out.get('parsing_error')}")

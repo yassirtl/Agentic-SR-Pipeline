@@ -268,6 +268,10 @@ def _final_message(run_id: str, state: dict, out=print) -> None:
     if not rep:
         out(f"\nRun {run_id} ended without a report (stages run: "
             f"{', '.join(state.get('completed_stages', []))}). See audit.jsonl.")
+        last = (state.get("audit_log") or [{}])[-1]
+        if last.get("event") == "stopped: repeated failure":  # Part 10d
+            out(f"Stopped: {last['stage']} failed twice in a row (rounds "
+                f"{', '.join(map(str, last['rounds']))}): {last['error']}\n{last['detail']}")
         return
     summary = json.loads(Path(rep["files"]["run_summary.json"]).read_text())
     qa = state.get("qa_report") or {}

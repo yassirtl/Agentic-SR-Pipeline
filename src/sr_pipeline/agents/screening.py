@@ -579,7 +579,8 @@ def check_verdicts(raw: list[dict], crit_ids: list[str], text: str, who: str,
     'unclear'; a failure whose quote is empty or not in the text is downgraded to
     'unclear' (flag ``unverified_<who>_<criterion>``), and so is a D 'no' whose quote
     names a listed design without any non-primary word (flag
-    ``contradicting_quote_<who>_D``), and so is an E 'yes' whose quote sits in an
+    ``contradicting_quote_<who>_D``) or, with no design list, any D 'no' whose quote has
+    no non-primary word (flag ``no_nonprimary_word_<who>_D``, Part 10d), and so is an E 'yes' whose quote sits in an
     eligibility sentence (flag ``eligibility_quote_<who>_<criterion>``). Each verdict gets ``verified``: a non-empty quote
     found in the text. Criteria in ``deferred`` (full-text-only, at title/abstract) are
     forced to 'unclear' with ``deferred: True``; the model's answer stays in
@@ -624,6 +625,14 @@ def check_verdicts(raw: list[dict], crit_ids: list[str], text: str, who: str,
         elif (cid == "D" and v["met"] == "no" and design_re is not None
               and design_re.search(quote) and not NON_PRIMARY_WORDS.search(quote)):
             flags.append(f"contradicting_quote_{who}_D")
+            item["met_claimed"], item["met"] = v["met"], "unclear"
+        elif (cid == "D" and v["met"] == "no" and design_re is None
+              and not NON_PRIMARY_WORDS.search(quote)):
+            # Part 10d (bug fix after the freeze): without a design list, D fails only for a
+            # non-primary record (review, protocol, editorial, letter...), so its quote must
+            # name one. The check above existed only for topics with designs. Seen live
+            # (T1/T3, --limit 500): 7 gold studies excluded on D quoting their bare title.
+            flags.append(f"no_nonprimary_word_{who}_D")
             item["met_claimed"], item["met"] = v["met"], "unclear"
         elif (v["met"] == "yes" and cid in evidence
               and not has_evidence_term(quote, evidence[cid])):
@@ -854,6 +863,8 @@ def ta_counts(decisions: list[dict]) -> dict:
                                             d["flags"]) for d in decisions),
         "ft_absence": sum(any(f.startswith("ft_absence") for f in d["flags"])
                           for d in decisions),
+        "d_no_nonprimary_word": sum(any(f.startswith("no_nonprimary_word") for f in
+                                        d["flags"]) for d in decisions),
         "eligibility_quotes": sum(any(f.startswith("eligibility_quote") for f in d["flags"])
                                   for d in decisions),
         **_agreement(decisions),
@@ -883,6 +894,7 @@ def ft_counts(decisions: list[dict]) -> dict:
         "arxiv_rule": base["arxiv_rule"],
         "evidence_term_downgrades": base["evidence_term_downgrades"],
         "ft_absence": base["ft_absence"],
+        "d_no_nonprimary_word": base["d_no_nonprimary_word"],
         "pairs": base["pairs"], "agreement": base["agreement"], "kappa": base["kappa"],
     }
 

@@ -1,0 +1,466 @@
+{
+  "run_id": "20261108-183527-3491f8",
+  "topic": "T1",
+  "label_problems": [],
+  "completeness": {
+    "gold_recall": {
+      "counts": {
+        "gold": 18,
+        "covered": 18,
+        "found": 13,
+        "screened": 13,
+        "ta_included": 11,
+        "included": 11
+      },
+      "recall": {
+        "search_vs_all": 0.7222,
+        "search_vs_covered": 0.7222,
+        "final_vs_all": 0.6111,
+        "final_vs_covered": 0.6111,
+        "screening_ta": 0.8462,
+        "screening_ta_ft": 0.8462
+      },
+      "screen_limit": 500,
+      "lost_by_stage": {
+        "covered": [],
+        "found": [
+          "Corino 2017",
+          "Bashar 2019",
+          "Väliaho 2019",
+          "Guo 2019",
+          "Seshadri 2020"
+        ],
+        "screened": [],
+        "ta_included": [
+          "Rajakariar 2019",
+          "Caillol 2021"
+        ],
+        "included": []
+      },
+      "studies": [
+        {
+          "row": "1",
+          "first_author": "Corino",
+          "year": "2017",
+          "title": "Detection of atrial fibrillation episodes using a wristband device",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": null,
+          "matched_by": null,
+          "rank": null,
+          "reached": "covered",
+          "lost_at": "found",
+          "reason": "not among the run's records: the query missed it",
+          "ta": null,
+          "ft": null,
+          "fulltext_status": null
+        },
+        {
+          "row": "2",
+          "first_author": "Bumgarner",
+          "year": "2018",
+          "title": "Smartwatch algorithm for automated detection of atrial fibrillation",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.1016/j.jacc.2018.03.003",
+          "matched_by": "doi",
+          "rank": 6,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "abstract_only"
+        },
+        {
+          "row": "3",
+          "first_author": "Tison",
+          "year": "2018",
+          "title": "Passive detection of atrial fibrillation using a commercially available smartwatch",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.1001/jamacardio.2018.0136",
+          "matched_by": "doi",
+          "rank": 12,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "abstract_only"
+        },
+        {
+          "row": "4",
+          "first_author": "Wasserlauf",
+          "year": "2019",
+          "title": "Smartwatch performance for the detection and quantification of atrial fibrillation",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.1161/circep.118.006834",
+          "matched_by": "doi",
+          "rank": 9,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "abstract_only"
+        },
+        {
+          "row": "5",
+          "first_author": "Perez",
+          "year": "2019",
+          "title": "Large-scale assessment of a smartwatch to identify atrial fibrillation",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.1056/nejmoa1901183",
+          "matched_by": "doi",
+          "rank": 1,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "pmc_xml"
+        },
+        {
+          "row": "6",
+          "first_author": "Zhang",
+          "year": "2019",
+          "title": "Validation of single centre pre-mobile atrial fibrillation apps for continuous monitoring of atrial fibrillation in a real-world setting: pilot cohort study",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.2196/14909",
+          "matched_by": "doi",
+          "rank": 70,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "pmc_xml"
+        },
+        {
+          "row": "7",
+          "first_author": "Ding",
+          "year": "2019",
+          "title": "Accuracy and usability of a novel algorithm for detection of irregular pulse using a smartwatch among older adults: observational study",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.2196/13850",
+          "matched_by": "doi",
+          "rank": 85,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "pmc_xml"
+        },
+        {
+          "row": "8",
+          "first_author": "Dörr",
+          "year": "2019",
+          "title": "The WATCH AF Trial: SmartWATCHes for detection of atrial fibrillation",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.1016/j.jacep.2018.10.006",
+          "matched_by": "doi",
+          "rank": 26,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "abstract_only"
+        },
+        {
+          "row": "9",
+          "first_author": "Bashar",
+          "year": "2019",
+          "title": "Smartwatch based atrial fibrillation detection from photoplethysmography signals",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.1109/embc.2019.8856928",
+          "matched_by": "doi",
+          "rank": 38,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "abstract_only"
+        },
+        {
+          "row": "10",
+          "first_author": "Bashar",
+          "year": "2019",
+          "title": "Atrial fibrillation detection from wrist photoplethysmography signals using smartwatches",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": null,
+          "matched_by": null,
+          "rank": null,
+          "reached": "covered",
+          "lost_at": "found",
+          "reason": "not among the run's records: the query missed it",
+          "ta": null,
+          "ft": null,
+          "fulltext_status": null
+        },
+        {
+          "row": "11",
+          "first_author": "Väliaho",
+          "year": "2019",
+          "title": "Wrist band photoplethysmography in detection of individual pulses in atrial fibrillation and algorithm-based detection of atrial fibrillation",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": null,
+          "matched_by": null,
+          "rank": null,
+          "reached": "covered",
+          "lost_at": "found",
+          "reason": "not among the run's records: the query missed it",
+          "ta": null,
+          "ft": null,
+          "fulltext_status": null
+        },
+        {
+          "row": "12",
+          "first_author": "Guo",
+          "year": "2019",
+          "title": "Mobile photoplethysmographic technology to detect atrial fibrillation",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": null,
+          "matched_by": null,
+          "rank": null,
+          "reached": "covered",
+          "lost_at": "found",
+          "reason": "not among the run's records: the query missed it",
+          "ta": null,
+          "ft": null,
+          "fulltext_status": null
+        },
+        {
+          "row": "13",
+          "first_author": "Chen",
+          "year": "2020",
+          "title": "A new smart wristband equipped with an artificial intelligence algorithm to detect atrial fibrillation",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.1016/j.hrthm.2020.01.034",
+          "matched_by": "doi",
+          "rank": 111,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "abstract_only"
+        },
+        {
+          "row": "14",
+          "first_author": "Rajakariar",
+          "year": "2019",
+          "title": "Smartwatch based arrhythmia detection: accuracy of clinician interpretation of unclassified tracings",
+          "type": "conference abstract",
+          "covered": true,
+          "paper_id": "doi:10.1016/j.hlc.2019.06.221",
+          "matched_by": "doi",
+          "rank": 78,
+          "reached": "screened",
+          "lost_at": "ta_included",
+          "reason": "excluded on D (not a primary study), by agreement",
+          "ta": "exclude",
+          "ft": null,
+          "fulltext_status": null
+        },
+        {
+          "row": "15",
+          "first_author": "Seshadri",
+          "year": "2020",
+          "title": "Accuracy of Apple Watch for detection of atrial fibrillation",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": null,
+          "matched_by": null,
+          "rank": null,
+          "reached": "covered",
+          "lost_at": "found",
+          "reason": "not among the run's records: the query missed it",
+          "ta": null,
+          "ft": null,
+          "fulltext_status": null
+        },
+        {
+          "row": "16",
+          "first_author": "Selder",
+          "year": "2020",
+          "title": "Assessment of a standalone photoplethysmography (PPG) algorithm for detection of atrial fibrillation on wristband-derived data",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.1016/j.cmpb.2020.105753",
+          "matched_by": "doi",
+          "rank": 57,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "abstract_only"
+        },
+        {
+          "row": "17",
+          "first_author": "Han",
+          "year": "2020",
+          "title": "Premature atrial and ventricular contraction detection using photoplethysmographic data from a smartwatch",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.3390/s20195683",
+          "matched_by": "doi",
+          "rank": 37,
+          "reached": "included",
+          "lost_at": null,
+          "reason": null,
+          "ta": "include",
+          "ft": "include",
+          "fulltext_status": "pmc_xml"
+        },
+        {
+          "row": "18",
+          "first_author": "Caillol",
+          "year": "2021",
+          "title": "Accuracy of a smartwatch-derived ECG for diagnosing bradyarrhythmias, tachyarrhythmias, and cardiac ischemia",
+          "type": "journal article",
+          "covered": true,
+          "paper_id": "doi:10.1161/circep.120.009260",
+          "matched_by": "doi",
+          "rank": 20,
+          "reached": "screened",
+          "lost_at": "ta_included",
+          "reason": "excluded on D (not a primary study), by agreement",
+          "ta": "exclude",
+          "ft": null,
+          "fulltext_status": null
+        }
+      ]
+    },
+    "extraction_completeness": {
+      "studies": 102,
+      "scope": "all fields",
+      "fields": 1836,
+      "reported": 533,
+      "share_reported": 0.2903,
+      "by_text": {
+        "abstract only": {
+          "reported": 357,
+          "fields": 1548,
+          "share": 0.2306
+        },
+        "full text": {
+          "reported": 176,
+          "fields": 288,
+          "share": 0.6111
+        }
+      }
+    },
+    "prisma_consistency": {
+      "consistent": true,
+      "checks": {
+        "identified - not downloaded - duplicates - automation - not screened = screened": true,
+        "screened - excluded = sought": true,
+        "sought - excluded = included": true
+      }
+    },
+    "critic": {
+      "passed": true,
+      "blockers": 0,
+      "warnings": 4,
+      "loops_used": 0
+    }
+  },
+  "accuracy": {
+    "gold_precision": {
+      "included": 102,
+      "gold_included": 11,
+      "precision_lower_bound": 0.1078,
+      "note": "lower bound: an include that is not in the gold list may still be eligible"
+    }
+  },
+  "consistency": {
+    "screener_agreement": {
+      "ta": {
+        "pairs": 426,
+        "kappa": 0.4231,
+        "agreement": 0.7418,
+        "resolved_by": {
+          "agreement": 305,
+          "adjudicator": 119,
+          "d_title_rule": 8,
+          "design_guard": 2
+        },
+        "adjudicated_share": 0.2742,
+        "quotes_not_found": 93,
+        "llm_errors": 0
+      },
+      "ft": {
+        "pairs": 152,
+        "kappa": 0.6137,
+        "agreement": 0.8224,
+        "resolved_by": {
+          "adjudicator": 31,
+          "agreement": 121
+        },
+        "adjudicated_share": 0.2039,
+        "quotes_not_found": 27,
+        "llm_errors": 0
+      }
+    },
+    "coordinator": {
+      "steps": 9,
+      "decisions": {
+        "accepted": 8,
+        "refused": 1
+      },
+      "refusals": [
+        {
+          "step": 5,
+          "proposed": "search_strategy",
+          "reason": "title/abstract screening included 152 records: no reason to search again",
+          "substituted": "ft_screening"
+        }
+      ],
+      "budget_exhausted": false,
+      "stages_run": [
+        "planner",
+        "search_strategy",
+        "retrieval",
+        "ta_screening",
+        "ft_screening",
+        "extraction",
+        "synthesis",
+        "critic"
+      ]
+    }
+  },
+  "time": {
+    "time_cost": {
+      "seconds": 1094.2,
+      "hours": 0.3,
+      "seconds_note": "wall clock from start to finish: includes human pauses and the time between a crash and its --resume",
+      "llm_calls": 2925,
+      "llm_calls_cached": 927,
+      "cost_usd": 0.7545,
+      "cost_is_lower_bound": false,
+      "cost_per_screened_record": 0.0017,
+      "counts": {
+        "screened": 434,
+        "full_text": 152,
+        "included": 102
+      },
+      "manual": "manual_effort.yaml has empty rates: no manual estimate computed",
+      "benchmark": "Haddaway & Westgate 2019: an average environmental systematic review takes about 164 full-time-equivalent days (66 CEE reviews, 2012-2017)."
+    }
+  }
+}
