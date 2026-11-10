@@ -93,6 +93,14 @@ def deciding_quote(d: dict) -> str:
     return deciding_verdict(d)["quote"]
 
 
+def supporting_verdicts(d: dict) -> list[dict]:
+    """For a decision with no single deciding quote (an include): the deciding screener's
+    criteria judged met, with their quotes (the evidence the include rests on)."""
+    src = d.get("adjudicator") if d.get("resolved_by") == "adjudicator" else d.get("a")
+    src = src or d.get("a") or {}
+    return [v for v in src.get("verdicts") or [] if v.get("met") == "yes" and v.get("quote")]
+
+
 def _cut(text, n: int = CONTEXT_CHARS) -> str:
     text = " ".join(str(text or "").split())
     return text if len(text) <= n else text[: n - 1] + "…"
@@ -138,14 +146,20 @@ def _screening_items(state: dict, chunks: dict, key: str) -> list[dict]:
         detail = (f"criterion {crit}" + (f" ({names[crit]})" if crit in names else "")
                   if crit and crit != "all" else "all criteria met") + f" · resolved by {d.get('resolved_by')}"
         v = deciding_verdict(d)
+        quote, chunk_ids = v["quote"], [v["chunk_id"]]
+        if not quote:                       # an include: the criteria met, with their quotes
+            met = supporting_verdicts(d)
+            quote = " | ".join(f"{x['criterion']}: {x['quote']}" for x in met)
+            chunk_ids = list(dict.fromkeys(x.get("chunk_id") for x in met))
         if key == "ft_decisions":
             status = d.get("fulltext_status") or ""
             detail += f" · text: {status}" if status else ""
-            context = _passage(chunks, v["chunk_id"], _cut(p.get("abstract")))
+            passages = [chunks[c] for c in chunk_ids if c and c in chunks]
+            context = _cut(" || ".join(passages), 3000) if passages else _cut(p.get("abstract"))
         else:
             context = _cut(p.get("abstract")) or "(no abstract)"
         out.append({"item_id": pid, "paper_id": pid, "title": d.get("title") or p.get("title"),
-                    "decision": d["final"], "detail": detail, "quote": v["quote"],
+                    "decision": d["final"], "detail": detail, "quote": quote,
                     "context": context, "link": _link(p)})
     return out
 
@@ -333,8 +347,9 @@ def discard_check(run_id: str, stage: str, root: str | Path | None = None) -> No
     check = load_check(run_id, stage, root)
     if check is None:
         return
-    if any(normalise_mark(r.get("mark")) for r in check["rows"]):
-        raise PermissionError("this sample has marks: it is kept")
+    if any(normalise_mark(r.get("mark")) or (r.get("note") or "").strip()
+           for r in check["rows"]):
+        raise PermissionError("this sample has marks or notes: it is kept")
     for p in paths(run_id, stage, root):
         p.unlink(missing_ok=True)
 

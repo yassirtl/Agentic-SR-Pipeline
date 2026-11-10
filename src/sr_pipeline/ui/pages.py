@@ -1000,12 +1000,14 @@ def check_item(run_id: str, stage: str, r: dict) -> None:
     mark = SC.normalise_mark(r.get("mark"))
     head = (f'<div class="step"><div class="no">{e(str(r.get("n")))}</div><div>'
             f'<div class="head"><b>{e(r.get("title") or "")}</b></div>')
-    if stage == "synthesis":
-        head += f'<div class="head" style="margin-top:6px">{e(r.get("decision") or "")}</div>'
+    if stage in ("synthesis", "extraction"):        # long text: wrapped, never cut
+        label = "" if stage == "synthesis" else "Pipeline value: "
+        head += (f'<div class="head" style="margin-top:6px">{label}'
+                 f'{e(r.get("decision") or "")}</div>')
     else:
         kind = ("done" if r.get("decision") == "include" else "refused"
                 if r.get("decision") == "exclude" else "info")
-        head += f'<div class="why">Pipeline: {pill(kind, (r.get("decision") or "")[:200])}</div>'
+        head += f'<div class="why">Pipeline: {pill(kind, r.get("decision") or "")}</div>'
     head += f'<div class="why">{e(r.get("detail") or "")}</div>'
     if r.get("quote"):
         head += f'<div class="quote" style="margin-top:6px">“{e(r["quote"])}”</div>'
@@ -1097,7 +1099,7 @@ def page_check() -> None:
           (spec["result"].capitalize(), share, ci)])
     for r in rows:
         check_item(pick, stage, r)
-    if not s["marked"]:
+    if not s["marked"] and not any((r.get("note") or "").strip() for r in rows):
         if st.button("Discard this sample (no mark yet)", key=f"discard:{pick}:{stage}"):
             SC.discard_check(pick, stage, checks_dir())
             st.rerun()

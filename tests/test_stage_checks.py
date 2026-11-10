@@ -35,6 +35,11 @@ def make_state(n_records: int = 30) -> dict:
            "fulltext_status": "pmc_xml",
            "a": {"decision": "include", "quote": "we randomised", "chunk_id": f"p{i:02d}::3"}}
           for i in (3, 6, 9, 12)]
+    # an include with no single quote: the criteria met carry the evidence
+    ft[1]["a"] = {"decision": "include", "quote": "", "verdicts": [
+        {"criterion": "I1", "met": "yes", "quote": "adults aged 70", "chunk_id": "p06::1"},
+        {"criterion": "I2", "met": "yes", "quote": "walking program", "chunk_id": "p06::2"},
+        {"criterion": "E1", "met": "no", "quote": "a control group", "chunk_id": "p06::4"}]}
     extractions = [{"paper_id": f"p{i:02d}", "round": 1, "title": f"Paper {i}",
                     "fulltext_status": "pmc_xml",
                     "fields": {"country": {"status": "reported", "value": "Japan",
@@ -75,6 +80,9 @@ def test_stage_items_units_and_latest_round():
     assert ta["p01"]["quote"] == "quote 1"                             # deciding verdict's quote
     ft = SC.stage_items(s, "ft", chunks)[0]
     assert ft["context"] == "Full passage of paper 3." and ft["link"] == "https://doi.org/10.1/3"
+    inc = {it["item_id"]: it for it in SC.stage_items(s, "ft", {"p06::1": "One.", "p06::2": "Two."})}
+    assert inc["p06"]["quote"] == "I1: adults aged 70 | I2: walking program"
+    assert inc["p06"]["context"] == "One. || Two."
     ex = SC.stage_items(s, "extraction", chunks)
     assert {it["item_id"] for it in ex} >= {"p03::country", "p03::age"}
     assert not any(it["item_id"].endswith("::sex") for it in ex)       # not reported: not sampled
@@ -129,6 +137,9 @@ def test_marks_save_and_discard_rules(tmp_path):
     SC.discard_check(RUN, "rob", tmp_path)                                 # no mark: allowed
     assert SC.load_check(RUN, "rob", tmp_path) is None
     out = SC.create_check(make_state(), RUN, "rob", 5, root=tmp_path)
+    SC.set_mark(RUN, "rob", first, None, "to check", root=tmp_path)       # a note alone
+    with pytest.raises(PermissionError):
+        SC.discard_check(RUN, "rob", tmp_path)
     SC.set_mark(RUN, "rob", first, "w", "D1 should be some concerns", root=tmp_path)
     SC.set_mark(RUN, "rob", first, None, None, root=tmp_path)             # None = unchanged
     row = SC.load_check(RUN, "rob", tmp_path)["rows"][0]
