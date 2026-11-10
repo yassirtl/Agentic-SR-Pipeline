@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..coordinator import spent_usd
+from ..evaluation.stage_checks import deciding_quote as _deciding_quote
 from ..guardrail import STAGES, is_fresh
 from ..llm import PRICES, compute_cost
 from ..reporting.summary import _calls
@@ -483,20 +484,6 @@ def coordinator_steps(run: Run) -> list[dict]:
 
 
 # --- Screening -------------------------------------------------------------------------
-
-def _deciding_quote(d: dict) -> str:
-    """Quote behind the final decision: the resolver's own quote, else the verdict quote
-    of the deciding criterion."""
-    src = d.get("adjudicator") if d.get("resolved_by") == "adjudicator" else d.get("a")
-    src = src or d.get("a") or {}
-    if src.get("quote"):
-        return src["quote"]
-    crit = d.get("criterion")
-    for v in src.get("verdicts") or []:
-        if v.get("criterion") == crit and v.get("quote"):
-            return v["quote"]
-    return ""
-
 
 def screening_rows(run: Run, stage: str) -> list[dict]:
     """Latest decision per record for ``stage`` ("ta" or "ft")."""

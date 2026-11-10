@@ -144,6 +144,12 @@ def human_labels(ctx: dict) -> dict | None:
     return score_labels(ctx["state"], ctx["labels"])
 
 
+@metric("stage_checks", "accuracy")
+def stage_checks(ctx: dict) -> dict | None:
+    """Part 11c: per-stage human check (UI), share judged correct + Wilson 95% interval."""
+    return ctx.get("stage_checks") or None
+
+
 # --- inter-agent consistency ----------------------------------------------------------
 
 @metric("screener_agreement", "consistency")

@@ -139,7 +139,7 @@ T2:
   review: none (new review; no published systematic review asks this, searched 2026-11-08)
   gold: null
   metrics: [extraction_completeness, prisma_consistency, critic, human_labels,
-            screener_agreement, coordinator, time_cost]
+            stage_checks, screener_agreement, coordinator, time_cost]
   study_designs: []
   # Last 5 years: the plan says 2021-11 to now; the protocol window is in years, so 2021.
   years: {start: 2021, end_date: null}

@@ -21,6 +21,7 @@ from ..config import load_config
 from .labels import make_sheet, read_labels
 from .metrics import load_manual, run_metrics
 from .recall import load_gold_rows
+from .stage_checks import summarise as stage_checks_summary
 from .topics import TOPICS_FILE, load_topic
 
 EVAL_DIR = TOPICS_FILE.parent          # evaluation/ (tracked)
@@ -43,7 +44,7 @@ def _json(path: Path) -> dict:
 
 
 def context(folder: Path, topic_id: str | None = None, labels: Path | None = None,
-            manual: dict | None = None) -> dict:
+            manual: dict | None = None, checks_root: Path | None = None) -> dict:
     state = _json(folder / "state.json")
     run = _json(folder / "run.json")
     summary = _json(folder / "report" / "run_summary.json")
@@ -65,7 +66,8 @@ def context(folder: Path, topic_id: str | None = None, labels: Path | None = Non
     human, problems = read_labels(labels) if labels.exists() else ({}, [])
     return {"folder": folder, "state": state, "run": run, "summary": summary,
             "topic": topic, "gold_rows": gold_rows, "labels": human or None,
-            "label_problems": problems, "manual": manual}
+            "label_problems": problems, "manual": manual,
+            "stage_checks": stage_checks_summary(folder.name, checks_root) or None}
 
 
 # --- Markdown -----------------------------------------------------------------------------
@@ -151,8 +153,24 @@ def render(ctx: dict, results: dict) -> str:
                          + (f" on {d['criterion']} ({d['label']})" if d["criterion"] else "")
                          + f": {d['title']}")
         lines.append("")
-    else:
+    elif "stage_checks" not in a:
         lines += ["No human labels yet (`python -m sr_pipeline.evaluation sample RUN`).", ""]
+    if "stage_checks" in a:
+        lines += ["### Per-stage human check (not blind: the checker saw the pipeline's answer)",
+                  "", "| Stage | Unit | Sample / population | Correct | Wrong | Unsure | "
+                  "Share correct (95% Wilson) |", "|---|---|---|---|---|---|---|"]
+        for v in a["stage_checks"].values():
+            ci = f" ({_pct(v['ci95'][0])} to {_pct(v['ci95'][1])})" if v["ci95"] else ""
+            lines.append(f"| {v['name']} | {v['unit']} | {v['sampled']} / {v['population']}"
+                         f" (seed {v['seed']}) | {v['correct']} | {v['wrong']} | "
+                         f"{v['unsure']} | {_pct(v['share_correct'])}{ci}"
+                         + (f", {v['unmarked']} not marked" if v["unmarked"] else "") + " |")
+        lines.append("")
+        for v in a["stage_checks"].values():
+            for w in v["wrong_items"]:
+                lines.append(f"- {v['name']}, wrong: {w['title']} ({w['decision'][:120]})"
+                             + (f": {w['note']}" if w["note"] else ""))
+        lines.append("")
 
     lines += ["## Inter-agent consistency", ""]
     for stage, v in (k.get("screener_agreement") or {}).items():

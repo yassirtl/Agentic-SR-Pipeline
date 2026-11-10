@@ -956,3 +956,148 @@ def budget_form(run_id: str, payload: dict) -> None:
             L.resume(run_id, kind="budget_cap",
                      answer={"budget_usd": None} if remove else float(new))
             st.rerun()
+
+
+# --- Page 5: per-stage human check (Part 11c) -------------------------------------------------
+
+from sr_pipeline.evaluation import stage_checks as SC  # noqa: E402
+
+CHECKS_DIR: Path | None = None   # set by tests; otherwise evaluation/stage_checks (tracked)
+MARK_LABELS = {"correct": "✓ correct", "wrong": "✗ wrong", "unsure": "? unsure"}
+
+
+def checks_dir() -> Path:
+    return CHECKS_DIR or SC.CHECKS_DIR
+
+
+@st.cache_data(show_spinner=False, max_entries=24)
+def _population(path: str, mtime: float, stage: str) -> int:
+    run = get_run(path, mtime)
+    return len(SC.stage_items(run.state or {}, stage))
+
+
+@st.cache_resource(show_spinner="Reading passages…", max_entries=2)
+def _chunks(path: str) -> dict[str, str]:
+    return SC.load_chunks(Path(path))
+
+
+def _ci(v: dict) -> str:
+    if v.get("share_correct") is None:
+        return "–"
+    lo, hi = v["ci95"]
+    return f"{100 * v['share_correct']:.0f}% ({100 * lo:.0f} to {100 * hi:.0f})"
+
+
+def _save_mark(run_id: str, stage: str, item_id: str, key: str) -> None:
+    label = st.session_state.get(f"{key}:mark")
+    mark = next((m for m, l in MARK_LABELS.items() if l == label), "")
+    SC.set_mark(run_id, stage, item_id, mark, st.session_state.get(f"{key}:note", ""),
+                root=checks_dir())
+
+
+def check_item(run_id: str, stage: str, r: dict) -> None:
+    key = f"chk:{run_id}:{stage}:{r['item_id']}"
+    mark = SC.normalise_mark(r.get("mark"))
+    head = (f'<div class="step"><div class="no">{e(str(r.get("n")))}</div><div>'
+            f'<div class="head"><b>{e(r.get("title") or "")}</b></div>')
+    if stage == "synthesis":
+        head += f'<div class="head" style="margin-top:6px">{e(r.get("decision") or "")}</div>'
+    else:
+        kind = ("done" if r.get("decision") == "include" else "refused"
+                if r.get("decision") == "exclude" else "info")
+        head += f'<div class="why">Pipeline: {pill(kind, (r.get("decision") or "")[:200])}</div>'
+    head += f'<div class="why">{e(r.get("detail") or "")}</div>'
+    if r.get("quote"):
+        head += f'<div class="quote" style="margin-top:6px">“{e(r["quote"])}”</div>'
+    if r.get("link"):
+        head += f'<div class="why"><a href="{e(r["link"])}" target="_blank">open the paper ↗</a></div>'
+    st.markdown(head + "</div></div>", unsafe_allow_html=True)
+    if r.get("context"):
+        with st.expander({"search": "Abstract", "ta": "Abstract", "synthesis": "Cited studies"}
+                         .get(stage, "Passage / reason")):
+            st.markdown(f'<div class="note">{e(r["context"])}</div>', unsafe_allow_html=True)
+    c1, c2 = st.columns([2, 3])
+    with c1:
+        st.radio("Your judgement", list(MARK_LABELS.values()), horizontal=True,
+                 index=list(MARK_LABELS).index(mark) if mark else None, key=f"{key}:mark",
+                 on_change=_save_mark, args=(run_id, stage, r["item_id"], key),
+                 label_visibility="collapsed")
+    with c2:
+        st.text_input("Note", value=r.get("note") or "", key=f"{key}:note",
+                      placeholder="optional note (why wrong / unsure)",
+                      on_change=_save_mark, args=(run_id, stage, r["item_id"], key),
+                      label_visibility="collapsed")
+
+
+def page_check() -> None:
+    st.title("Human check, per stage")
+    st.markdown('<p class="note">Draw a small random sample of what the pipeline decided at one '
+                'stage, and mark each item. Every mark is saved at once to '
+                f'<code>{e(str(checks_dir()))}/&lt;run&gt;/&lt;stage&gt;.csv</code>. No API call. '
+                'Not blind: you see the pipeline\'s answer, so report it as "judged correct '
+                'by the author", next to the blind labels.</p>', unsafe_allow_html=True)
+    runs = [r for r in all_runs(str(runs_dir())) if (r.path / "state.json").exists()]
+    if not runs:
+        st.info("No run with a state.json found.")
+        return
+    ids = [r.run_id for r in runs]
+    current = st.session_state.get("run_id")
+    if current not in ids:
+        current = next((r.run_id for r in runs if r.finished), ids[0])
+    pick = st.sidebar.selectbox("Run", ids, index=ids.index(current), key="check_run",
+                                format_func=lambda i: f"{i} · {next(r.topic or '–' for r in runs if r.run_id == i)}")
+    st.session_state["run_id"] = pick
+    stage = st.sidebar.radio("Stage", list(SC.STAGES), format_func=lambda s: SC.STAGES[s]["name"],
+                             key="check_stage")
+    info = next(r for r in runs if r.run_id == pick)
+    mtime = _mtime(info.path / "state.json") + _mtime(info.path / "audit.jsonl")
+    spec = SC.STAGES[stage]
+
+    summary = SC.summarise(pick, checks_dir())
+    if summary:
+        st.dataframe(pd.DataFrame([{
+            "stage": v["name"], "sample / population": f"{v['sampled']} / {v['population']}",
+            "marked": v["marked"], "correct": v["correct"], "wrong": v["wrong"],
+            "unsure": v["unsure"], "share correct (95% Wilson)": _ci(v)}
+            for v in summary.values()]), hide_index=True, width="stretch")
+
+    st.subheader(spec["name"])
+    st.markdown(f'<p class="note">One item = {e(spec["unit"])}. Question: <b>{e(spec["ask"])}</b> '
+                'Unsure items are left out of the share.</p>', unsafe_allow_html=True)
+    check = SC.load_check(pick, stage, checks_dir())
+    if check is None:
+        population = _population(str(info.path), mtime, stage)
+        if not population:
+            st.info("This run has no item for this stage.")
+            return
+        c1, c2 = st.columns(2)
+        n = c1.slider("Sample size", SC.MIN_N, SC.MAX_N, SC.DEFAULT_N, key=f"n:{pick}:{stage}")
+        seed = c2.number_input("Seed", min_value=0, value=SC.DEFAULT_SEED, step=1,
+                               key=f"seed:{pick}:{stage}")
+        st.caption(f"{population:,} items in this run; {min(n, population)} will be drawn. "
+                   "The sample is stored and never redrawn once marked.")
+        if st.button("Draw the sample", type="primary", key=f"draw:{pick}:{stage}"):
+            run = open_run(info)
+            chunks = _chunks(str(info.path)) if stage in ("ft", "extraction", "rob") else None
+            SC.create_check(run.state or {}, pick, stage, n, int(seed), root=checks_dir(),
+                            chunks=chunks)
+            st.rerun()
+        return
+
+    meta, rows = check["meta"], check["rows"]
+    s = SC.score(rows)
+    share, ci = "–", "nothing judged yet"
+    if s["judged"]:
+        share = f"{100 * s['share_correct']:.0f}%"
+        ci = f"95% Wilson {100 * s['ci95'][0]:.0f} to {100 * s['ci95'][1]:.0f}% · n = {s['judged']}"
+    kpis([("Marked", f"{s['marked']} / {s['sampled']}",
+           f"seed {meta.get('seed')} · population {meta.get('population', '–')}"),
+          ("Correct", str(s["correct"]), ""), ("Wrong", str(s["wrong"]), ""),
+          ("Unsure", str(s["unsure"]), "left out of the share"),
+          (spec["result"].capitalize(), share, ci)])
+    for r in rows:
+        check_item(pick, stage, r)
+    if not s["marked"]:
+        if st.button("Discard this sample (no mark yet)", key=f"discard:{pick}:{stage}"):
+            SC.discard_check(pick, stage, checks_dir())
+            st.rerun()
