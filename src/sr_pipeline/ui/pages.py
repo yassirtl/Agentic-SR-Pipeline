@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 
 from sr_pipeline.config import load_config
-from sr_pipeline.llm import PRICES
+from sr_pipeline.llm import PRICES, compute_cost
 from sr_pipeline.ui import data as D
 
 PAGES: dict = {}   # filled by app.py (st.Page objects, for switch_page)
@@ -228,26 +228,24 @@ def tab_timeline(run: D.Run) -> None:
 
 def tab_prisma(run: D.Run) -> None:
     img = run.path / "report" / "prisma_flow.png"
-    left, right = st.columns([3, 2])
-    with left:
-        if img.exists():
-            st.image(str(img), width="stretch")
-        else:
-            st.info("No PRISMA diagram (report stage not run).")
-    with right:
-        ta = run.prisma.get("title_abstract") or {}
-        ft = run.prisma.get("full_text") or {}
-        st.subheader("Exclusion reasons")
-        for name, block in (("Title/abstract", ta), ("Full text", ft)):
-            reasons = block.get("excluded_by_criterion") or {}
-            if reasons:
-                st.markdown(f"**{name}** ({sum(reasons.values())} excluded)")
-                st.dataframe(pd.DataFrame(sorted(reasons.items(), key=lambda x: -x[1]),
-                                          columns=["Criterion", "Records"]),
-                             hide_index=True, width="stretch")
-        if ft.get("reports_not_retrieved"):
-            st.markdown(f"**Full text not retrieved:** {ft['reports_not_retrieved']} of "
-                        f"{ft.get('reports_sought')} (screened on abstract, flagged)")
+    if img.exists():
+        _, mid, _ = st.columns([1, 10, 1])
+        mid.image(str(img), width="stretch")
+    else:
+        st.info("No PRISMA diagram (report stage not run).")
+    ta = run.prisma.get("title_abstract") or {}
+    ft = run.prisma.get("full_text") or {}
+    cols = st.columns(2)
+    for col, (name, block) in zip(cols, (("Title/abstract", ta), ("Full text", ft))):
+        reasons = block.get("excluded_by_criterion") or {}
+        if reasons:
+            col.markdown(f"**{name} exclusion reasons** ({sum(reasons.values())} excluded)")
+            col.dataframe(pd.DataFrame(sorted(reasons.items(), key=lambda x: -x[1]),
+                                       columns=["Criterion", "Records"]),
+                          hide_index=True, width="stretch")
+    if ft.get("reports_not_retrieved"):
+        st.markdown(f"**Full text not retrieved:** {ft['reports_not_retrieved']} of "
+                    f"{ft.get('reports_sought')} (screened on abstract, flagged)")
 
 
 def tab_screening(run: D.Run) -> None:
@@ -267,6 +265,9 @@ def tab_screening(run: D.Run) -> None:
         st.info("Decisions are read from state.json, which this run folder does not have.")
         return
     df = pd.DataFrame(rows)
+    first = ["title", "decision", "criterion", "resolved_by", "quote"]
+    df = df[first + [c for c in df.columns if c not in first]]
+    df["quote"] = df["quote"].where(df["quote"].astype(bool), "—")   # include: no single criterion
     c1, c2, c3 = st.columns(3)
     dec = c1.multiselect("Decision", sorted(df["decision"].dropna().unique()))
     res = c2.multiselect("Resolved by", sorted(df["resolved_by"].dropna().unique()))
@@ -571,7 +572,8 @@ def page_estimator() -> None:
     st.altair_chart((bars + rule).properties(height=34 * len(chart_df))
                     .configure_axis(labelFontSize=14, titleFontSize=13, labelLimit=260, tickCount=6, gridColor="#ecebe7").configure_view(stroke=None),
                     width="stretch")
-    st.caption("Bar = median; grey line = low–high over the source runs.")
+    st.caption("Bar = median; grey line = low–high over the source runs. Each figure is a median over "
+               "runs on its own, so the stage medians need not add up to the total median.")
     st.dataframe(df, hide_index=True, width="stretch", column_config={
         c: st.column_config.NumberColumn(format="$%.3f") for c in ("Cost ($)", "Cost low", "Cost high")})
     st.markdown(
@@ -580,6 +582,17 @@ def page_estimator() -> None:
         f'by LLM calls because the pipeline does not log time per stage; embedding rate measured on '
         f'{est["embed_runs"]} of {len(used)} runs (the others hit the embedding cache, median used).</p>',
         unsafe_allow_html=True)
+    with st.expander("Measured rates per source run (where the estimate comes from)"):
+        st.dataframe(pd.DataFrame([{
+            "Run": r.run_id, "Topic": r.topic, "Stage": D.STAGE_LABELS.get(stage, "Coordinator"),
+            "Per": D.DRIVER_TEXT[D.DRIVERS[stage]], "Calls / unit": round(m["calls"], 2),
+            "Input tokens / unit": round(m["input"]), "Output tokens / unit": round(m["output"]),
+            "Fresh $ / unit": compute_cost(D.DEFAULT_MODEL, round(m["input"]), round(m["output"])),
+        } for r in used for stage, m in r.per_unit.items()]), hide_index=True, width="stretch",
+            column_config={"Fresh $ / unit": st.column_config.NumberColumn(
+                f"Fresh $ / unit ({D.DEFAULT_MODEL})", format="$%.5f")})
+        st.caption("Read from each run's report/run_summary.json (tokens include cached calls) and "
+                   "report/prisma_counts.json (units).")
 
 
 

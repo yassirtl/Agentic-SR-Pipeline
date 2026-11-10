@@ -97,7 +97,7 @@ A Streamlit app reads finished runs from `runs/` (or `SR_RUNS_DIR`). It makes no
 
 ```bash
 .venv/bin/pip install -e ".[ui]"
-.venv/bin/sr-ui                # opens http://localhost:8501
+.venv/bin/sr-ui                # opens http://localhost:8501 in the browser (Ctrl+C to stop)
 ```
 
 - **Runs**: one row per run (topic, date, limit, screened, included, billed cost, time). Click a row to open it.
