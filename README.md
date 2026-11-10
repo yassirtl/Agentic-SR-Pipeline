@@ -93,7 +93,7 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 
 ## Results
 
-Full analysis, figures and limitations: [docs/report/report.pdf](docs/report/report.pdf). All numbers come from `python -m sr_pipeline.evaluation evaluate RUN` (copies in `evaluation/results/`); gpt-4o-mini for every agent, `--auto`.
+Full analysis, figures and limitations: [docs/report/report.pdf](docs/report/report.pdf). All numbers come from `python -m sr_pipeline.evaluation evaluate RUN` (copies in `evaluation/results/`); gpt-4o-mini for every agent. v1 and D0 runs had a human at the pauses (protocol approved without edits, T3 conflicts included); later runs used `--auto`, which reproduces those answers.
 
 | Topic | Gold review | Version | Gold: all → in our databases → found by search → screened → kept TA → kept FT | Final recall | Included (gold share) | Cost, time |
 |---|---|---|---|---|---|---|
@@ -106,9 +106,9 @@ Full analysis, figures and limitations: [docs/report/report.pdf](docs/report/rep
 
 \* marginal cost: most LLM answers came from the cache of earlier runs. "Gold share" is a lower bound on precision (an include outside the gold list may still be eligible).
 
-- **Held out vs post hoc.** v1 is the frozen pipeline before any change. v2 (search fixes) and the D fix (a bug in the design check) were made after seeing the v1 and limit-500 results, so the final numbers are post hoc (report §3.1).
+- **Held out vs post hoc.** v1 is the pipeline with screening frozen and the 10b rules (prompted by T2), before any change prompted by T1/T3 results. v2 (search fixes) and the D fix (a bug in the design check) were made after seeing the v1 and limit-500 results, so the final numbers are post hoc (report §3.1).
 - **What raised recall.** Search fixes: gold found 9 → 13 (T1), 8 → 17 (T3). Screening every record instead of the top 100: +16.7 points on both topics. D fix: no gold study lost on the design criterion (T1 2 → 0, T3 5 → 0), +5.6 and +13.3 points.
-- **What it cost.** Precision fell to about 5%: about 90% of the final includes were judged on the abstract only (no open-access full text), where the rules never exclude for missing information. Title/abstract screener agreement fell to kappa ≈ 0 after the D fix (the adjudicator decides most records).
+- **What it cost.** Precision fell to about 5%: about 90% of the final includes were judged on the abstract only (no open-access full text), where the rules never exclude for missing information. Title/abstract screener agreement is near 0 (T3 in every version; T1 after the D fix, 0.42 → 0.07), so the adjudicator decides most records.
 - **What is still lost.** Mostly the query (T1 5, T3 13 gold studies never returned, though all are in OpenAlex); one full-text judgement per topic. Screening kept 28 of the 30 gold studies it saw.
 - **Accuracy against human labels: not measured** (labelling skipped, 2026-11-10); T2's accuracy is unknown.
 - **Time.** For the same workload (screening, extraction, risk of bias), the PredicTER default rates (Haddaway & Westgate 2019; `evaluation/manual_effort.yaml`) give 69 (T1) and 80 (T3) person-days; the pipeline took under half an hour. Most of those days are extraction of includes a human would have excluded first (report §4.6).
