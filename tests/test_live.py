@@ -167,7 +167,39 @@ def test_budget_cap_never_reached_and_none_removes_it(tmp_path):
 
 
 def test_cli_budget_argument_errors(capsys):
-    for argv in (["q", "--budget", "0"], ["--resume", "x", "--budget", "1"],
+    for argv in (["q", "--budget", "0"], ["--resume", "x", "--limit", "1"],
                  ["--report-only", "x", "--budget", "1"]):
         with pytest.raises(SystemExit):
             cli.main(argv)
+
+
+def test_cap_set_when_resuming_a_stopped_uncapped_run(tmp_path):
+    """A run started without a cap (e.g. before Part 11b) stops mid-run; resuming it with a
+    cap stores the cap in the checkpoint and run.json, and the coordinator then pauses at
+    the next stage boundary."""
+    from test_report import extractor
+    cfg = e2e_config(tmp_path).model_copy(update={"screening_workers": 1})
+    llm = priced_llm()
+    left = {"n": 1}
+
+    def flaky(prompt):
+        if left["n"]:
+            left["n"] -= 1
+            raise KeyboardInterrupt
+        return extractor(prompt)
+
+    llm.script["extraction"] = flaky
+    with pytest.raises(KeyboardInterrupt):
+        cli.run(cfg, question=QUESTION, topic_id=None, auto=True, ask=Answers([]),
+                out=lambda *a: None, llm=llm, **INJECT)
+    run_id = next(p.name for p in cfg.runs_dir.iterdir())
+    with pytest.raises(KeyboardInterrupt):   # Enter at the budget pause = stop there
+        cli.run(cfg, question=None, topic_id=None, auto=False, resume=run_id, budget_usd=0.001,
+                ask=Answers([""]), out=lambda *a: None, llm=llm, **INJECT)
+    audit = audit_lines(cfg, run_id)
+    events = [e.get("event") for e in audit]
+    i = events.index("budget cap set at resume")
+    assert audit[i]["previous_cap_usd"] is None and audit[i]["budget_usd"] == 0.001
+    # The interrupted stage (extraction) finished first, then the cap paused the run.
+    assert events[i + 1] == "extraction and risk of bias" and events[-1] == "stopped: budget cap"
+    assert json.loads((cfg.runs_dir / run_id / "run.json").read_text())["budget_usd"] == 0.001

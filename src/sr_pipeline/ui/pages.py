@@ -216,13 +216,36 @@ def continue_section(runs: list[D.RunInfo]) -> None:
         format_func=lambda i: f"{i} · {STATUS.get(views[i].status, ('', views[i].status))[1]} · "
                               f"{(views[i].meta.get('topic') or views[i].meta.get('question') or '')[:70]}")
     v = views[pick]
-    c1, c2 = st.columns([1, 4])
     if v.status in ("stopped", "error", "ended"):
-        if c1.button("Resume", key="resume_btn", type="primary"):
-            L.resume(pick)
+        if resume_controls(v, "resume"):
             _go_live(pick)
-    if c2.button("Open live view", key="open_live_btn"):
+    if st.button("Open live view", key="open_live_btn"):
         _go_live(pick)
+
+
+def resume_controls(v: D.LiveView, key: str) -> bool:
+    """Resume a stopped run: shows what it is (limit, spend so far, cap), lets a cap be set
+    (runs started before Part 11b have none) and asks for a confirmation, because resuming
+    makes billed API calls. Returns True once the worker is started."""
+    limit = v.meta.get("screen_limit")
+    st.markdown(f'<p class="note">Limit <b>{e(str(limit if limit is not None else "–"))}</b> · '
+                f'spent so far <b>{money(v.spent_usd)}</b> · cap <b>{money(v.cap_usd) if v.cap_usd else "none"}</b>'
+                f' · last step: {e(str((v.last_event or {}).get("node", "–")))}</p>',
+                unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    cap = c1.number_input("Budget cap for the rest ($, 0 = keep as is)", min_value=0.0,
+                          max_value=1000.0, value=0.0 if v.cap_usd else
+                          float(round(v.spent_usd + 1.0, 2)), step=0.25, key=f"{key}_cap",
+                          help="Total spend (including what is already spent) at which the run "
+                               "pauses before the next stage.")
+    ok = c2.checkbox("I understand resuming makes billed API calls", key=f"{key}_confirm")
+    if cap and cap <= v.spent_usd:
+        st.warning(f"The cap must be above the {money(v.spent_usd)} already spent.")
+        return False
+    if st.button("Resume", key=f"{key}_btn", type="primary", disabled=not ok):
+        L.resume(v.run_id, budget_usd=cap or None)
+        return True
+    return False
 
 
 def _go_live(run_id: str) -> None:
@@ -745,6 +768,11 @@ def render_live(v: D.LiveView) -> None:
     q = v.meta.get("question") or ""
     if v.meta.get("topic"):
         q = f"Topic {v.meta['topic']}" + (f": {q}" if q else "")
+    if not v.meta:                   # the worker has not written run.json yet
+        st.markdown(f'<div class="hero"><div class="eyebrow">Run {e(v.run_id)}</div>'
+                    f'<div class="q">Starting…</div><div class="meta">{pill("starting")}</div>'
+                    '</div>', unsafe_allow_html=True)
+        return
     now = (f' · now: <b>{e(D.STAGE_LABELS.get(v.current, v.current))}</b>' if v.current else "")
     st.markdown(
         f'<div class="hero"><div class="eyebrow">Run {e(v.run_id)} · limit '
@@ -798,8 +826,8 @@ def page_live() -> None:
         if v.status == "waiting" and v.pending:
             pending_form(rid, v.pending)
         elif v.status in ("stopped", "error", "ended"):
-            if st.button("Resume from the last checkpoint", type="primary", key="live_resume_btn"):
-                L.resume(rid)
+            st.subheader("Resume from the last checkpoint")
+            if resume_controls(v, "live_resume"):
                 st.rerun()
         elif v.status == "finished":
             st.success("Run finished: the report is written.")
@@ -843,22 +871,22 @@ def protocol_form(run_id: str, payload: dict) -> None:
     for role, terms in (p.get("search_terms") or {}).items():
         st.caption(f"Search block fixed by the topic ({role}): {', '.join(terms) or 'none'}")
     with st.form("protocol_form"):
-        edited = {"question": st.text_input("Question", p.get("question") or "")}
+        edited = {"question": st.text_input("Question", L.form_text(p.get("question")))}
         c1, c2 = st.columns(2)
-        edited["pico.population"] = c1.text_input("Population", pico.get("population") or "")
-        edited["pico.intervention"] = c2.text_input("Intervention", pico.get("intervention") or "")
-        edited["pico.comparator"] = c1.text_input("Comparator", pico.get("comparator") or "")
+        edited["pico.population"] = c1.text_input("Population", L.form_text(pico.get("population")))
+        edited["pico.intervention"] = c2.text_input("Intervention", L.form_text(pico.get("intervention")))
+        edited["pico.comparator"] = c1.text_input("Comparator", L.form_text(pico.get("comparator")))
         edited["pico.outcomes"] = _lines(c2.text_area("Outcomes (one per line)",
-                                                      "\n".join(pico.get("outcomes") or [])))
+                                                      "\n".join(map(L.form_text, pico.get("outcomes") or []))))
         edited["inclusion_criteria"] = _lines(st.text_area(
-            "Inclusion criteria (one per line)", "\n".join(p.get("inclusion_criteria") or []),
+            "Inclusion criteria (one per line)", "\n".join(map(L.form_text, p.get("inclusion_criteria") or [])),
             height=140))
         edited["exclusion_criteria"] = _lines(st.text_area(
-            "Exclusion criteria (one per line)", "\n".join(p.get("exclusion_criteria") or []),
+            "Exclusion criteria (one per line)", "\n".join(map(L.form_text, p.get("exclusion_criteria") or [])),
             height=120))
         edited["study_designs"] = _lines(st.text_area(
             "Study designs (one per line, empty = no restriction)",
-            "\n".join(p.get("study_designs") or [])))
+            "\n".join(map(L.form_text, p.get("study_designs") or []))))
         c1, c2, c3 = st.columns(3)
         edited["databases"] = c1.multiselect("Databases", ["openalex", "pubmed", "arxiv"],
                                              default=p.get("databases") or [])
@@ -882,15 +910,19 @@ def _vote(v: dict | None) -> str:
     v = v or {}
     quote = v.get("quote") or next((x.get("quote") for x in v.get("verdicts") or []
                                     if x.get("criterion") == v.get("criterion") and x.get("quote")), "")
+    if v.get("unresolved"):          # its decision field is a placeholder: it could not decide
+        return "**could not decide**" + (f"  \n_{v['reason']}_" if v.get("reason") else "")
     head = f"**{v.get('decision') or v.get('reason') or 'n/a'}**"
-    if v.get("criterion"):
+    if v.get("criterion") and v.get("criterion") != "all":
         head += f" ({v['criterion']})"
     return head + (f"  \n_“{quote}”_" if quote else "")
 
 
 def conflicts_form(run_id: str, payload: dict) -> None:
     papers = payload.get("papers") or []
-    st.subheader(f"Resolve screening conflicts · {payload.get('stage')} · {len(papers)} papers")
+    stage = D.STAGE_LABELS.get(payload.get("stage"), payload.get("stage"))
+    st.subheader(f"Resolve screening conflicts · {stage} · {len(papers)} "
+                 f"paper{'s' if len(papers) != 1 else ''}")
     st.markdown('<p class="note">The two screeners disagreed and the adjudicator could not decide. '
                 'Your answer is final and logged as resolved by human.</p>', unsafe_allow_html=True)
     with st.form("conflicts_form"):

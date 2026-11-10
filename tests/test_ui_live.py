@@ -88,8 +88,9 @@ def test_start_approve_resolve_report_from_the_ui(ui):
     assert p["study_designs"] == ["randomized controlled trial"]
     assert p["pico"]["population"] == "adults aged 60 or older"
     approval = next(e for e in state["audit_log"] if e["node"] == "protocol_approval")
-    assert approval["edits"]["pico"] == {"population": "adults aged 60 or older"}
-    assert "question" not in approval["edits"]                  # unchanged fields not sent
+    # Only the field the human changed is sent (+ the designs from the accepted suggestion).
+    assert approval["edits"] == {"pico": {"population": "adults aged 60 or older"},
+                                 "study_designs": ["randomized controlled trial"]}
     conflict = next(e for e in state["audit_log"] if e["node"] == "ta_conflicts")
     assert conflict["resolved_by"] == "human" and list(conflict["decisions"].values()) == ["exclude"]
     check_outputs(ui, rid, state)
@@ -152,11 +153,17 @@ def test_stopped_run_resumes_from_the_runs_page(ui):
     at = page(cfg, "page_runs")
     assert not at.exception
     assert at.selectbox(key="resume_pick").value == rid
+    assert at.button(key="resume_btn").disabled                # needs the confirmation
+    assert at.number_input(key="resume_cap").value > 0           # uncapped run: a cap offered
+    at.number_input(key="resume_cap").set_value(5.0)
+    at.checkbox(key="resume_confirm").check().run()
     at = at.button(key="resume_btn").click().run()
     L.join(rid, 60)
     assert L.read_status(cfg.runs_dir / rid)["status"] == "finished"
     state = json.loads((cfg.runs_dir / rid / "state.json").read_text())
     assert state["completed_stages"] == list(STAGES)
+    assert state["run"]["budget_usd"] == 5.0
+    assert any(e.get("event") == "budget cap set at resume" for e in state["audit_log"])
 
 
 def test_live_view_while_a_stage_is_running(tmp_path):
@@ -202,7 +209,70 @@ def test_live_page_renders_a_waiting_run_without_a_worker(ui):
         "kind": "screening_conflicts", "stage": "title/abstract", "error": None,
         "papers": [{"paper_id": "p1", "title": "<b>T</b>", "screener_a": {"decision": "include"},
                     "screener_b": {"decision": "exclude", "criterion": "E1", "quote": "q"},
-                    "adjudicator": {"reason": "unsure"}, "flags": []}]})
+                    "adjudicator": {"decision": "include", "criterion": "all", "reason": "unsure",
+                                    "unresolved": True}, "flags": []}]})
     at = page(ui, live_run=rid)
     assert not at.exception
     assert [r.key for r in at.radio if r.key and r.key.startswith("conf_")] == ["conf_p1"]
+    html = "".join(m.value for m in at.markdown)
+    assert "could not decide" in html and "Adjudicator: **include" not in html
+
+
+def seeded_protocols():
+    from sr_pipeline.evaluation.topics import load_topic, seed_protocol
+    from sr_pipeline.protocol import Protocol, ProtocolDraft
+    from test_report import DRAFT
+
+    base = Protocol(question=QUESTION, databases=DRAFT["databases"],
+                    **{k: v for k, v in DRAFT.items()
+                       if k in ProtocolDraft.model_fields and k != "databases"}
+                    ).model_dump(mode="json")
+    out = {"free question": base}
+    for t in ("T1", "T2", "T3", "D0"):
+        out[t] = seed_protocol(dict(base), load_topic(t))[0]
+    odd = json.loads(json.dumps(base))       # what a form would silently "change"
+    odd["pico"]["comparator"] = None
+    odd["inclusion_criteria"][0] += "  \n continued on a second line "
+    odd["databases"] = list(reversed(odd["databases"]))
+    out["edge cases"] = odd
+    return out
+
+
+@pytest.mark.parametrize("name", ["free question", "T1", "T2", "T3", "D0", "edge cases"])
+def test_untouched_approval_form_sends_true(ui, monkeypatch, name):
+    protocol = seeded_protocols()[name]
+    rid = "20261110-120000-abcdef"
+    run = ui.runs_dir / rid
+    run.mkdir(parents=True)
+    (run / "run.json").write_text(json.dumps({"question": QUESTION, "screen_limit": 100}))
+    L.write_status(run, "waiting", pending={
+        "kind": "protocol_approval", "protocol": protocol, "error": None,
+        "suggested_designs": protocol.get("suggested_designs", []),
+        "design_reason": protocol.get("design_reason", ""),
+        "criteria_source": protocol.get("criteria_source")})
+    sent = {}
+    monkeypatch.setattr(L, "resume", lambda run_id, **kw: sent.update(kw) or run_id)
+    at = page(ui, live_run=rid)
+    assert not at.exception
+    submit(at)
+    assert sent["kind"] == "protocol_approval" and sent["answer"] is True
+
+
+def test_running_run_renders_through_the_refresh_fragment(ui):
+    """A run whose worker is alive renders inside the st.fragment(run_every=2) that polls the
+    audit; the stage the coordinator chose is highlighted as running."""
+    rid = "20261110-120000-abcdef"
+    run = ui.runs_dir / rid
+    run.mkdir(parents=True)
+    (run / "run.json").write_text(json.dumps({"question": QUESTION, "screen_limit": 100,
+                                              "started_at": "2026-11-10T12:00:00+00:00"}))
+    (run / "audit.jsonl").write_text(json.dumps(
+        {"node": "coordinator", "step": 1, "proposed": "planner", "outcome": "accepted"}))
+    L.write_status(run, "running")
+    L._WORKERS[rid] = type("Alive", (), {"is_alive": lambda self: True})()
+    at = page(ui, live_run=rid)
+    assert not at.exception
+    html = "".join(m.value for m in at.markdown)
+    assert 'class="stage running"' in html and "now: <b>Protocol</b>" in html
+    assert at.get("progress")                                    # spend bar
+    L._WORKERS.pop(rid)

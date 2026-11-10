@@ -147,15 +147,17 @@ def start(*, question: str | None, topic: str | None, auto: bool, limit: int | N
 
 
 def resume(run_id: str, *, kind: str | None = None, answer: Any = NO_ANSWER,
-           cfg: Config | None = None) -> str:
+           budget_usd: float | None = None, cfg: Config | None = None) -> str:
     """Continue a paused or stopped run. ``kind`` + ``answer``: the human's answer to the
     pause the run is waiting at (same payload as the CLI); without one, a stopped run goes on
-    from its last checkpoint and a paused run stays paused (status ``waiting`` again)."""
+    from its last checkpoint and a paused run stays paused (status ``waiting`` again).
+    ``budget_usd``: a new cap for a stopped run (runs started before Part 11b have none)."""
     cfg = cfg or config()
     if not (cfg.runs_dir / run_id / "run.json").exists():
         raise FileNotFoundError(f"no run {run_id} in {cfg.runs_dir}")
     return _spawn(cfg, run_id, {"question": None, "topic_id": None, "auto": False,
-                                "resume": run_id, "answer": answer_once(kind, answer)})
+                                "resume": run_id, "answer": answer_once(kind, answer),
+                                "budget_usd": budget_usd})
 
 
 # --- Answers built from the UI forms (same payloads as the CLI) ---------------------------
@@ -163,7 +165,7 @@ def resume(run_id: str, *, kind: str | None = None, answer: Any = NO_ANSWER,
 def protocol_answer(protocol: dict, edited: dict, accept_designs: bool):
     """True when nothing changed; else {"edits": {...only changed fields...}} and/or
     {"accept_suggested_designs": True}."""
-    edits = {k: v for k, v in edited.items() if _get(protocol, k) != v}
+    edits = {k: v for k, v in edited.items() if _norm(_get(protocol, k), k) != _norm(v, k)}
     nested: dict = {}
     for key, value in edits.items():
         cur = nested
@@ -177,6 +179,27 @@ def protocol_answer(protocol: dict, edited: dict, accept_designs: bool):
     if accept_designs:
         answer["accept_suggested_designs"] = True
     return answer or True
+
+
+def _norm(value, key: str = ""):
+    """What a form field means, so an untouched form sends ``True``: a text box turns None
+    into "", a text area splits on lines and strips, a multiselect may reorder. A spurious
+    criteria edit is not harmless (it rewrites criteria_source and drops the tests and labels
+    keyed on the criterion text), so only a real change counts."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return " ".join(value.split()) or None
+    if isinstance(value, list):
+        items = [_norm(x) for x in value]
+        items = [x for x in items if x is not None]
+        return sorted(items, key=str) if key == "databases" else items
+    return value
+
+
+def form_text(value) -> str:
+    """A protocol string as a form shows it (whitespace collapsed, None -> "")."""
+    return " ".join(str(value).split()) if value else ""
 
 
 def _get(d: dict, dotted: str):

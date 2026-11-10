@@ -11,6 +11,7 @@
     sr-review --report-only 20261108-101500-a1b2c3   # rebuild report/ from the saved state
                                                      # (code only, $0, no API key needed)
     sr-review --topic T3 --budget 0.50      # pause before the next stage once $0.50 is spent
+    sr-review --resume RUN_ID --budget 1    # continue a stopped run with a (new) cap
 
 Every run lives in ``runs/<run_id>/``: ``run.json`` (the arguments, so ``--resume`` rebuilds
 the same graph), ``checkpoints.sqlite`` (LangGraph state after every step: a crash or a
@@ -43,6 +44,7 @@ from langgraph.types import Command
 
 from .audit import AuditWriter, new_run_id
 from .config import Config, load_config
+from .coordinator import spent_usd
 from .evaluation.topics import load_topic
 from .graph import run_config
 from .llm import api_error_message
@@ -215,6 +217,22 @@ def drive(graph, config: dict, first, audit: AuditWriter, answer: Callable[[dict
         payload = Command(resume=answer(snap.interrupts[0].value))
 
 
+def set_cap(graph, config: dict, values: dict, cap: float, run_dir: Path) -> None:
+    """Part 11b: set the dollar cap of a stopped run before resuming it. The checkpoint is
+    updated (its next step is unchanged); the coordinator checks the cap before the next
+    stage. Recorded in the audit and in run.json."""
+    run = values.get("run") or {}
+    spent = spent_usd(values.get("audit_log", []))
+    graph.update_state(config, {"run": {**run, "budget_usd": cap}, "audit_log": [{
+        "node": "budget_pause", "step": values.get("steps_taken", 0),
+        "event": "budget cap set at resume", "previous_cap_usd": run.get("budget_usd"),
+        "budget_usd": cap, "spent_usd": spent,
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds")}]})
+    meta_file = run_dir / "run.json"
+    meta = json.loads(meta_file.read_text())
+    meta_file.write_text(json.dumps({**meta, "budget_usd": cap}, indent=2))
+
+
 def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
         resume: str | None = None, screen_limit: int | None = None, ask: Ask = input,
         out=print, llm=None, budget_usd: float | None = None,
@@ -222,7 +240,8 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
         meta_extra: dict | None = None, **inject) -> tuple[str, dict]:
     """New run or ``resume``; returns (run_id, final state). ``screen_limit``: records
     screened at title/abstract (None = config; 0 = all), stored in run.json so a resume
-    uses the same. ``budget_usd``: cap on billed spend (Part 11b, None = no cap).
+    uses the same. ``budget_usd``: cap on billed spend (Part 11b, None = no cap); with
+    ``resume`` it sets a new cap on a stopped run.
     ``answer(payload)`` answers a pause (default: ask at the terminal); it may raise
     ``AwaitingHuman`` to leave the run paused. ``run_id`` / ``meta_extra`` (e.g. the UI's
     cost estimate) are for the UI. ``llm`` / ``inject`` are for tests (scripted LLM, fake
@@ -263,6 +282,12 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
                 return run_id, snap.values
             # Entries checkpointed but not on disk yet (a crash right after a node).
             audit.sync(snap.values.get("audit_log", []))
+            if budget_usd is not None:   # new cap for a stopped run (e.g. one started uncapped)
+                if snap.interrupts:
+                    raise ValueError("this run is paused for an answer: a cap can only be set "
+                                     "on a stopped run (at a budget pause, answer the cap)")
+                set_cap(graph, config, snap.values, budget_usd, run_dir)
+                audit.sync(graph.get_state(config).values.get("audit_log", []))
             if snap.interrupts:   # paused for a human: ask again
                 first = Command(resume=answer(snap.interrupts[0].value))
             else:                 # stopped mid-run (crash, Ctrl-C): continue from the checkpoint
@@ -372,10 +397,9 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("--limit must be 0 (no limit) or more")
     if args.budget is not None and args.budget <= 0:
         ap.error("--budget must be more than 0")
-    if args.resume and (args.question or args.topic or args.auto or args.limit is not None
-                        or args.budget is not None):
-        ap.error("--resume takes the question, topic, --auto, --limit and --budget of the "
-                 "original run (a reached cap is raised at the pause)")
+    if args.resume and (args.question or args.topic or args.auto or args.limit is not None):
+        ap.error("--resume takes the question, topic, --auto and --limit of the original run "
+                 "(--budget sets a new cap on a stopped run)")
     topic = None
     if args.topic:
         try:
