@@ -33,10 +33,12 @@ dependencies = [
 
 [project.scripts]
 sr-review = "sr_pipeline.cli:main"
+sr-ui = "sr_pipeline.ui.launch:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
-report = ["markdown~=3.7"]   # docs/report/build.py: technical report Markdown -> HTML -> PDF
+report = ["markdown~=3.7"]
+ui = ["streamlit~=1.67", "pandas~=3.1", "altair~=6.3"]   # Part 11: sr-ui run viewer   # docs/report/build.py: technical report Markdown -> HTML -> PDF
 
 [tool.setuptools.packages.find]
 where = ["src"]

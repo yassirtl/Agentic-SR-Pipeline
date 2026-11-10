@@ -29,7 +29,7 @@ Python 3.11, macOS or Linux.
 ```bash
 python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest -q            # 348 tests, no network, no API key (scripted fake LLM)
+.venv/bin/pytest -q            # 360 tests, no network, no API key (scripted fake LLM)
 ```
 
 Embeddings use the OpenAI API (`text-embedding-3-small`), so no PyTorch is needed.
@@ -91,6 +91,19 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 | Inter-agent consistency | kappa and agreement of screener A vs B per stage, share adjudicated; coordinator decisions and guardrail refusals |
 | Time savings | run time, LLM calls, cost; next to a manual estimate in person-days from the sourced rates in `evaluation/manual_effort.yaml` (PredicTER defaults) |
 
+## View runs and estimate cost
+
+A Streamlit app reads finished runs from `runs/` (or `SR_RUNS_DIR`). It makes no LLM, database or embedding call.
+
+```bash
+.venv/bin/pip install -e ".[ui]"
+.venv/bin/sr-ui                # opens http://localhost:8501
+```
+
+- **Runs**: one row per run (topic, date, limit, screened, included, billed cost, time). Click a row to open it.
+- **Run detail**: the nine stages as cards in PRISMA order. Each card shows its status (done / stale / not run), how many times the guardrail refused it, counts in and out, and LLM calls, tokens and billed $. Tabs show the coordinator timeline (proposal, accepted or refused, guardrail reason, rationale), the PRISMA diagram, screening decisions with the deciding quote and κ, extraction with quotes, risk of bias, synthesis and critic issues, the gold funnel, and cost by stage.
+- **Cost estimator**: enter a `--limit` and a model per stage. Each finished run is scaled to that limit with its own include rates and tokens per record, priced with `llm.PRICES` as a fresh run (no cache). The estimate is the low, median and high over the source runs, which you can tick or untick. Time per stage is not logged by the pipeline, so time is split across stages by LLM calls.
+
 ## Results
 
 Full analysis, figures and limitations: [docs/report/report.pdf](docs/report/report.pdf). All numbers come from `python -m sr_pipeline.evaluation evaluate RUN` (copies in `evaluation/results/`); gpt-4o-mini for every agent. v1 and D0 runs had a human at the pauses (protocol approved without edits, T3 conflicts included); later runs used `--auto`, which reproduces those answers.
@@ -122,6 +135,7 @@ src/sr_pipeline/   state, guardrail, coordinator, llm (cache + cost), graph, cli
   rag/             chunking, embeddings, FAISS + BM25 hybrid index, LLM re-ranker
   reporting/       PRISMA diagram, manuscript (Markdown + DOCX), tables, run summary
   evaluation/      gold lists + coverage, topics, recall funnel, labels, metrics, CLI
+  ui/              Streamlit run viewer + cost estimator (data.py logic, pages.py, app.py)
 protocols/template.yaml   evaluation/   tests/   docs/PLAN.md
 ```
 
