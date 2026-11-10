@@ -55,11 +55,12 @@ SR_CONTACT_EMAIL=you@example.org   # optional: polite pool for OpenAlex / NCBI
 .venv/bin/sr-review --topic T3            # an evaluation topic (question + criteria from evaluation/topics.yaml)
 .venv/bin/sr-review --topic T3 --limit 0  # screen every record (default limit: the 100 most relevant)
 .venv/bin/sr-review "..." --auto          # no human pauses
+.venv/bin/sr-review --topic T3 --budget 0.50  # pause before the next stage once $0.50 is billed
 .venv/bin/sr-review --resume RUN_ID       # continue after a crash or Ctrl-C
 .venv/bin/sr-review --report-only RUN_ID  # rebuild the report of a finished run (no LLM)
 ```
 
-At the protocol pause press Enter to approve, `s` to accept the suggested design restriction, or type JSON edits (e.g. `{"edits": {"years": {"start": 2010}}}`). At a screening conflict answer `i` or `e` per record.
+At the protocol pause press Enter to approve, `s` to accept the suggested design restriction, or type JSON edits (e.g. `{"edits": {"years": {"start": 2010}}}`). At a screening conflict answer `i` or `e` per record. At the budget pause (only with `--budget`, also with `--auto`) type a higher cap to continue, `none` to remove it, or Enter to stop there and `--resume` later.
 
 Each run writes `runs/<run_id>/`:
 
@@ -69,7 +70,7 @@ Each run writes `runs/<run_id>/`:
 | `report/prisma_flow.png` | PRISMA 2020 flow diagram (with arithmetic checks) |
 | `report/tables/*.csv` | studies, extraction (with quotes), results, risk of bias, every screening decision |
 | `report/references.bib`, `protocol.json`, `run_summary.json` | references, final protocol, time / calls / cost per agent |
-| `audit.jsonl` | every node's decisions, prompts' outcomes, refusals, costs |
+| `audit.jsonl` | every node's decisions, prompts' outcomes, refusals, costs, start / end time; written as each node ends |
 | `state.json`, `checkpoints.sqlite` | final state, resume checkpoint |
 
 ## Evaluate
@@ -91,9 +92,9 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 | Inter-agent consistency | kappa and agreement of screener A vs B per stage, share adjudicated; coordinator decisions and guardrail refusals |
 | Time savings | run time, LLM calls, cost; next to a manual estimate in person-days from the sourced rates in `evaluation/manual_effort.yaml` (PredicTER defaults) |
 
-## View runs and estimate cost
+## View runs, estimate cost, run live
 
-A Streamlit app reads finished runs from `runs/` (or `SR_RUNS_DIR`). It makes no LLM, database or embedding call.
+A Streamlit app reads runs from `runs/` (or `SR_RUNS_DIR`). The viewer and the estimator make no LLM, database or embedding call; the **Live run** page starts real (billed) runs.
 
 ```bash
 .venv/bin/pip install -e ".[ui]"
@@ -102,7 +103,9 @@ A Streamlit app reads finished runs from `runs/` (or `SR_RUNS_DIR`). It makes no
 
 - **Runs**: one row per run (topic, date, limit, screened, included, billed cost, time). Click a row to open it.
 - **Run detail**: the nine stages as cards in PRISMA order. Each card shows its status (done / stale / not run), how many times the guardrail refused it, counts in and out, and LLM calls, tokens and billed $. Tabs show the coordinator timeline (proposal, accepted or refused, guardrail reason, rationale), the PRISMA diagram, screening decisions with the deciding quote and κ, extraction with quotes, risk of bias, synthesis and critic issues, the gold funnel, and cost by stage.
-- **Cost estimator**: enter a `--limit` and a model per stage. Each finished run is scaled to that limit with its own include rates and tokens per record, priced with `llm.PRICES` as a fresh run (no cache). The estimate is the low, median and high over the source runs, which you can tick or untick. Time per stage is not logged by the pipeline, so time is split across stages by LLM calls.
+- **Cost estimator**: enter a `--limit` and a model per stage. Each finished run is scaled to that limit with its own include rates and tokens per record, priced with `llm.PRICES` as a fresh run (no cache). The estimate is the low, median and high over the source runs, which you can tick or untick. Time is split across stages by LLM calls (runs before the UI have no time per stage).
+- **Live run**: pick an evaluation topic or type a question, a `--limit` and a budget cap in $. The run goes in a background thread (same code and checkpoint as `sr-review`). Every 2 s the page re-reads `audit.jsonl`: the running stage is highlighted, cards show calls, $ and time per stage, counters show records, screened and included, and a bar shows $ spent vs the estimate and the cap. The protocol approval (edit fields, accept suggested designs), the screening conflicts (both screeners' votes and quotes, include / exclude) and the budget pause are answered in forms, with the same answers as the CLI. The cap is checked between stages, so the stage running when it is reached is finished first.
+- **Continue a run** (Runs page): runs that stopped (app closed, network error) or wait for an answer, with Resume from the last checkpoint.
 
 ## Results
 

@@ -10,6 +10,7 @@
                                             # (default: config screen_limit = 100; 0 = all)
     sr-review --report-only 20261108-101500-a1b2c3   # rebuild report/ from the saved state
                                                      # (code only, $0, no API key needed)
+    sr-review --topic T3 --budget 0.50      # pause before the next stage once $0.50 is spent
 
 Every run lives in ``runs/<run_id>/``: ``run.json`` (the arguments, so ``--resume`` rebuilds
 the same graph), ``checkpoints.sqlite`` (LangGraph state after every step: a crash or a
@@ -20,6 +21,12 @@ Without ``--auto`` the run pauses twice at most: protocol approval (Enter = appr
 accept the suggested study designs, or a JSON answer such as
 ``{"edits": {"years": {"start": 2010}}}``), and unresolved screening conflicts (one answer
 per paper). The answers are recorded in the audit log.
+
+Part 11b: with ``--budget USD`` the run also pauses (even with ``--auto``) at the first stage
+boundary where the billed spend has reached the cap: enter a higher cap to go on, or Enter to
+stop there (resumable). Each node's audit entries are written as soon as the node ends, with
+its start / end time. ``run(answer=...)`` lets another front end (the Streamlit UI) answer the
+pauses instead of the terminal.
 """
 
 import argparse
@@ -114,12 +121,40 @@ def conflicts_answer(payload: dict, ask: Ask, out=print) -> dict:
     return answer
 
 
+def budget_answer(payload: dict, ask: Ask, out=print):
+    if payload.get("error"):
+        out(f"\nPrevious answer refused: {payload['error']}")
+    out(f"\nBUDGET CAP REACHED: spent ${payload['spent_usd']:.4f} of the "
+        f"${payload['budget_usd']:.2f} cap (paused before the next stage).")
+    while True:
+        raw = ask("New cap in $ to continue, 'none' to remove it, Enter = stop here: ").strip()
+        if raw == "":
+            raise KeyboardInterrupt   # the run stays paused: --resume asks again
+        if raw.lower() == "none":
+            return {"budget_usd": None}   # Command(resume=None) is not a valid resume
+        try:
+            return float(raw)
+        except ValueError:
+            out("Not a number; try again.")
+
+
 def answer_interrupt(value: dict, ask: Ask, out=print):
     if value.get("kind") == "protocol_approval":
         return protocol_answer(value, ask, out)
     if value.get("kind") == "screening_conflicts":
         return conflicts_answer(value, ask, out)
+    if value.get("kind") == "budget_cap":
+        return budget_answer(value, ask, out)
     raise ValueError(f"unknown interrupt: {value.get('kind')!r}")
+
+
+class AwaitingHuman(Exception):
+    """Raised by a non-terminal ``answer`` function (the UI) when the run pauses for a human
+    and no answer is ready yet: the run stays paused at its checkpoint."""
+
+    def __init__(self, payload: dict):
+        super().__init__(payload.get("kind"))
+        self.payload = payload
 
 
 # --- Running ----------------------------------------------------------------------------
@@ -160,41 +195,52 @@ def progress_line(node: str, update) -> str | None:
     return f"[{datetime.now():%H:%M:%S}] {node}: {', '.join(bits)}"
 
 
-def drive(graph, config: dict, first, audit: AuditWriter, ask: Ask, out=print) -> dict:
-    """Stream the graph (one progress line per finished stage), answer every interrupt,
-    sync the audit after each pause. Returns the state."""
+def drive(graph, config: dict, first, audit: AuditWriter, answer: Callable[[dict], object],
+          out=print) -> dict:
+    """Stream the graph (one progress line per finished stage), write each node's audit
+    entries as soon as it ends, answer every interrupt. Returns the state."""
     payload = first
     while True:
         for chunk in graph.stream(payload, config, stream_mode="updates"):
             for node, update in chunk.items():
+                if node == "__interrupt__" or not isinstance(update, dict):
+                    continue
+                audit.append(update.get("audit_log") or [])
                 if (line := progress_line(node, update)):
                     out(line)
         snap = graph.get_state(config)
         audit.sync(snap.values.get("audit_log", []))
         if not snap.interrupts:
             return snap.values
-        payload = Command(resume=answer_interrupt(snap.interrupts[0].value, ask, out))
+        payload = Command(resume=answer(snap.interrupts[0].value))
 
 
 def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
         resume: str | None = None, screen_limit: int | None = None, ask: Ask = input,
-        out=print, llm=None, **inject) -> tuple[str, dict]:
+        out=print, llm=None, budget_usd: float | None = None,
+        answer: Callable[[dict], object] | None = None, run_id: str | None = None,
+        meta_extra: dict | None = None, **inject) -> tuple[str, dict]:
     """New run or ``resume``; returns (run_id, final state). ``screen_limit``: records
     screened at title/abstract (None = config; 0 = all), stored in run.json so a resume
-    uses the same. ``llm`` / ``inject`` are for tests (scripted LLM, fake search / full
-    text / embedder)."""
+    uses the same. ``budget_usd``: cap on billed spend (Part 11b, None = no cap).
+    ``answer(payload)`` answers a pause (default: ask at the terminal); it may raise
+    ``AwaitingHuman`` to leave the run paused. ``run_id`` / ``meta_extra`` (e.g. the UI's
+    cost estimate) are for the UI. ``llm`` / ``inject`` are for tests (scripted LLM, fake
+    search / full text / embedder)."""
+    answer = answer or (lambda value: answer_interrupt(value, ask, out))
     if resume:
         run_id = resume
         run_dir = cfg.runs_dir / run_id
         meta = json.loads((run_dir / "run.json").read_text())
     else:
-        run_id = new_run_id()
+        run_id = run_id or new_run_id()
         run_dir = cfg.runs_dir / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
         meta = {"run_id": run_id, "question": question, "topic": topic_id, "auto": auto,
                 "screen_limit": cfg.screen_limit if screen_limit is None else screen_limit,
-                "models": agent_models(cfg),
-                "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+                "budget_usd": budget_usd, "models": agent_models(cfg),
+                "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                **(meta_extra or {})}
         (run_dir / "run.json").write_text(json.dumps(meta, indent=2))
     cfg = cfg.model_copy(update={"screen_limit": meta.get("screen_limit", cfg.screen_limit)})
     topic = load_topic(meta["topic"]) if meta.get("topic") else None
@@ -203,32 +249,38 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
     if llm is None:
         llm = cfg.make_llm()
         inject = {"http": cfg.make_http(), "embedder": cfg.make_embedder(), **inject}
+    saver = open_checkpointer(run_dir)
     graph = build_review_graph(cfg, llm, run_dir, auto=meta["auto"], topic=topic,
-                               checkpointer=open_checkpointer(run_dir), **inject)
+                               checkpointer=saver, **inject)
     config = run_config(run_id)
     audit = AuditWriter(cfg.runs_dir, run_id)
 
-    if resume:
-        snap = graph.get_state(config)
-        if not snap.next:
-            out(f"Run {run_id} has already finished.")
-            return run_id, snap.values
-        if snap.interrupts:   # paused for a human: ask again
-            first = Command(resume=answer_interrupt(snap.interrupts[0].value, ask, out))
-        else:                 # stopped mid-run (crash, Ctrl-C): continue from the checkpoint
-            first = None
-        out(f"Resuming run {run_id} at {', '.join(snap.next)}")
-    else:
-        first = {"question": question,
-                 "run": {"run_id": run_id, "started_at": meta["started_at"]}}
-        out(f"Run {run_id}: {question}\nOutputs in {run_dir}")
     try:
-        state = drive(graph, config, first, audit, ask, out)
+        if resume:
+            snap = graph.get_state(config)
+            if not snap.next:
+                out(f"Run {run_id} has already finished.")
+                return run_id, snap.values
+            # Entries checkpointed but not on disk yet (a crash right after a node).
+            audit.sync(snap.values.get("audit_log", []))
+            if snap.interrupts:   # paused for a human: ask again
+                first = Command(resume=answer(snap.interrupts[0].value))
+            else:                 # stopped mid-run (crash, Ctrl-C): continue from the checkpoint
+                first = None
+            out(f"Resuming run {run_id} at {', '.join(snap.next)}")
+        else:
+            first = {"question": question,
+                     "run": {"run_id": run_id, "started_at": meta["started_at"],
+                             "budget_usd": meta.get("budget_usd")}}
+            out(f"Run {run_id}: {question}\nOutputs in {run_dir}")
+        state = drive(graph, config, first, audit, answer, out)
+        (run_dir / "state.json").write_text(json.dumps(state, indent=2, default=str))
+        snap = graph.get_state(config)
     except BaseException as exc:
         exc.run_id = run_id  # for main()'s message: "then sr-review --resume <run_id>"
         raise
-    (run_dir / "state.json").write_text(json.dumps(state, indent=2, default=str))
-    snap = graph.get_state(config)
+    finally:
+        saver.conn.close()    # the UI starts many runs in one process
     if state.get("report") and not snap.next:
         compact_checkpoints(run_dir, snap.config["configurable"]["checkpoint_id"])
     return run_id, state
@@ -298,12 +350,16 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--limit", type=int, metavar="N",
                     help="screen only the N best-ranked unique records (default: config "
                          "screen_limit, 100; 0 = all); the rest are reported as not screened")
+    ap.add_argument("--budget", type=float, metavar="USD",
+                    help="pause before the next stage once the billed spend reaches USD "
+                         "(raise it to continue; default: no cap)")
     ap.add_argument("--report-only", metavar="RUN_ID",
                     help="rebuild runs/RUN_ID/report/ from the saved state (no LLM call)")
     args = ap.parse_args(argv)
 
     if args.report_only:
-        if args.question or args.topic or args.auto or args.resume or args.limit is not None:
+        if args.question or args.topic or args.auto or args.resume or args.limit is not None \
+                or args.budget is not None:
             ap.error("--report-only takes only a run id (and --config)")
         cfg = load_config(args.config)
         try:
@@ -314,8 +370,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.limit is not None and args.limit < 0:
         ap.error("--limit must be 0 (no limit) or more")
-    if args.resume and (args.question or args.topic or args.auto or args.limit is not None):
-        ap.error("--resume takes the question, topic, --auto and --limit of the original run")
+    if args.budget is not None and args.budget <= 0:
+        ap.error("--budget must be more than 0")
+    if args.resume and (args.question or args.topic or args.auto or args.limit is not None
+                        or args.budget is not None):
+        ap.error("--resume takes the question, topic, --auto, --limit and --budget of the "
+                 "original run (a reached cap is raised at the pause)")
     topic = None
     if args.topic:
         try:
@@ -337,7 +397,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     try:
         run_id, state = run(cfg, question=args.question, topic_id=args.topic,
-                            auto=args.auto, resume=args.resume, screen_limit=args.limit)
+                            auto=args.auto, resume=args.resume, screen_limit=args.limit,
+                            budget_usd=args.budget)
     except KeyboardInterrupt as exc:
         print(f"\nStopped. Continue later with: sr-review --resume "
               f"{getattr(exc, 'run_id', '<run_id>')} (the last finished step is "

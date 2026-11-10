@@ -73,4 +73,4 @@ def build_review_graph(cfg: Config, llm: LLM, run_dir: str | Path, *, auto: bool
     return build_graph(llm, max_steps=cfg.max_steps,
                        stages=build_stages(cfg, llm, run_dir, **inject),
                        approve_protocol=not auto, human_screening=not auto,
-                       checkpointer=checkpointer)
+                       checkpointer=checkpointer, embedder=inject.get("embedder"))

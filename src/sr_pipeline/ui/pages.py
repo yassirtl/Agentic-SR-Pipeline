@@ -1,6 +1,8 @@
-"""Pages of the run viewer and cost estimator (Part 11a). ``app.py`` wires them together.
+"""Pages of the run viewer and cost estimator (Part 11a) and of live runs (Part 11b).
+``app.py`` wires them together.
 
-Files only: no LLM, database or embedding call.
+The viewer and the estimator read files only. The live page starts and resumes runs through
+``ui/live.py`` (a background thread running ``cli.run``): that is where API calls happen.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import streamlit as st
 from sr_pipeline.config import load_config
 from sr_pipeline.llm import PRICES, compute_cost
 from sr_pipeline.ui import data as D
+from sr_pipeline.ui import live as L
 
 PAGES: dict = {}   # filled by app.py (st.Page objects, for switch_page)
 
@@ -29,6 +32,13 @@ STATUS = {  # icon + label + colour: colour never carries the meaning alone
     "incomplete": ("○", "incomplete", "#6b6a66", "#f1f0ed"),
     "accepted": ("✓", "accepted", "#0ca30c", "#e8f6e8"),
     "llm_error": ("!", "LLM error", "#d03b3b", "#fbeaea"),
+    "running": ("▶", "running", "#2a78d6", "#e8f0fb"),
+    "starting": ("▶", "starting", "#2a78d6", "#e8f0fb"),
+    "waiting": ("?", "waiting for you", "#7c3aed", "#f1eafd"),
+    "ended": ("■", "ended without report", "#b07800", "#fdf3dc"),
+    "stopped": ("■", "stopped", "#6b6a66", "#f1f0ed"),
+    "error": ("!", "error", "#d03b3b", "#fbeaea"),
+    "failed": ("!", "failed", "#d03b3b", "#fbeaea"),
     "info": ("", "", "#52514e", "#f1f0ed"),
 }
 
@@ -75,6 +85,7 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .step .why { font-size: 14px; color: var(--ink2); margin-top: 3px; }
 .step .guard { font-size: 14px; color: #c2410c; margin-top: 3px; font-weight: 600; }
 .note { color: var(--ink2); font-size: 14px; }
+.stage.running { box-shadow: 0 0 0 3px #2a78d633; }
 .quote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--ink2); font-style: italic; }
 </style>
 """
@@ -160,7 +171,9 @@ def page_runs() -> None:
     show_all = st.toggle("Show incomplete and smoke-test runs", value=False)
     shown = runs if show_all else finished
     if not shown:
-        st.info("No run found. Run `sr-review --topic T1 --auto --limit 100` first.")
+        st.info("No finished run yet. Start one on the Live run page, or run "
+                "`sr-review --topic T1 --auto --limit 100`.")
+        continue_section(D.discover_runs(runs_dir()))
         return
     df = pd.DataFrame([{
         "Run": r.run_id, "Topic": r.topic or "–", "Status": r.status,
@@ -184,13 +197,57 @@ def page_runs() -> None:
         st.session_state["run_id"] = shown[rows[0]].run_id
         if "detail" in PAGES:
             st.switch_page(PAGES["detail"])
+    continue_section(D.discover_runs(runs_dir()))   # not cached: a run may have just stopped
+
+
+def continue_section(runs: list[D.RunInfo]) -> None:
+    """Part 11b: runs that stopped or wait for an answer, with Resume."""
+    open_runs = [r for r in runs if not r.finished and D.resumable(r.path)]
+    if not open_runs:
+        return
+    st.subheader("Continue a run")
+    st.markdown('<p class="note">Runs with a checkpoint and no report: paused for an answer, '
+                'paused by the budget cap, stopped (app closed, network error) or still '
+                'running. Resume continues from the last finished step; nothing is redone.</p>',
+                unsafe_allow_html=True)
+    views = {r.run_id: D.live_view(r.path, alive=L.is_alive(r.run_id)) for r in open_runs}
+    pick = st.selectbox(
+        "Run", list(views), key="resume_pick",
+        format_func=lambda i: f"{i} · {STATUS.get(views[i].status, ('', views[i].status))[1]} · "
+                              f"{(views[i].meta.get('topic') or views[i].meta.get('question') or '')[:70]}")
+    v = views[pick]
+    c1, c2 = st.columns([1, 4])
+    if v.status in ("stopped", "error", "ended"):
+        if c1.button("Resume", key="resume_btn", type="primary"):
+            L.resume(pick)
+            _go_live(pick)
+    if c2.button("Open live view", key="open_live_btn"):
+        _go_live(pick)
+
+
+def _go_live(run_id: str) -> None:
+    st.session_state["live_run"] = run_id
+    if "live" in PAGES:
+        st.switch_page(PAGES["live"])
+    else:
+        st.rerun()
 
 
 # --- Page 2: run detail --------------------------------------------------------------------
 
+def clock(sec: float | None) -> str:
+    if sec is None:
+        return "–"
+    sec = int(round(sec))
+    return f"{sec // 3600}:{sec // 60 % 60:02d}:{sec % 60:02d}" if sec >= 3600 else \
+        f"{sec // 60}:{sec % 60:02d}"
+
+
 def stage_card_html(i: int, c: D.StageCard) -> str:
     color = STATUS[c.status][2]
     badges = pill(c.status)
+    if c.failed:
+        badges += pill("failed")
     if c.runs > 1:
         badges += pill("info", f"ran ×{c.runs}")
     if c.refused:
@@ -198,7 +255,10 @@ def stage_card_html(i: int, c: D.StageCard) -> str:
     usage = (f"{c.calls:,} LLM call{'s' if c.calls != 1 else ''} ({c.cached:,} cached) · "
              f"{(c.input_tokens + c.output_tokens) / 1000:,.0f}k tokens · {money(c.cost_usd)}"
              if c.calls else "no LLM call")
-    return (f'<div class="stage" style="--c:{color}"><div class="n">STAGE {i}</div>'
+    if c.seconds is not None:
+        usage += f" · {clock(c.seconds)}"
+    running = " running" if c.status == "running" else ""
+    return (f'<div class="stage{running}" style="--c:{color}"><div class="n">STAGE {i}</div>'
             f'<div class="t">{e(c.label)}</div><div class="badges">{badges}</div>'
             f'<div class="io">{e(c.count_in)}<span class="arrow">→</span><b>{e(c.count_out)}</b></div>'
             f'<div class="u">{e(usage)}</div></div>')
@@ -412,7 +472,10 @@ def page_detail() -> None:
         f'<div class="meta">{pill(info.status)} &nbsp;started {e((info.started_at or "")[:16].replace("T", " "))} UTC'
         f'</div></div>', unsafe_allow_html=True)
     kpis([
-        ("Wall-clock time", duration(s.get("seconds")), "total; per-stage time not logged"),
+        ("Wall-clock time", duration(s.get("seconds")),
+         "total; time per stage on the cards" if any(e.get("duration_s") is not None
+                                                     for e in run.audit)
+         else "total; per-stage time not logged (run before Part 11b)"),
         ("Coordinator steps", str(s.get("steps_taken", "–")),
          f'{coord.get("accepted", 0)} accepted · {coord.get("refused", 0)} refused'),
         ("LLM calls", f'{llm.get("calls", 0):,}', f'{llm.get("cached", 0):,} answered from cache'),
@@ -599,3 +662,265 @@ def page_estimator() -> None:
 
 def setup() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
+
+
+# --- Page 4: live run (Part 11b) --------------------------------------------------------------
+
+def topic_ids() -> list[str]:
+    import yaml
+
+    from sr_pipeline.evaluation.topics import TOPICS_FILE
+    try:
+        data = yaml.safe_load(TOPICS_FILE.read_text()) or {}
+    except OSError:
+        return []
+    return [k for k in data if not str(k).startswith("_")]
+
+
+def quick_estimate(limit: int) -> dict | None:
+    """Estimated $ and minutes for a fresh run at ``limit`` (Part 11a estimator, all
+    finished runs, default models), stored in run.json at start so the bar stays stable."""
+    rates = [D.run_rates(D.load_run(r.path, with_state=False))
+             for r in all_runs(str(runs_dir())) if r.finished]
+    rates = [r for r in rates if r]
+    if not rates or limit <= 0:
+        return None
+    est = D.estimate(rates, limit=limit)
+    return {"low": round(est["cost"].low, 4), "mid": round(est["cost"].mid, 4),
+            "high": round(est["cost"].high, 4), "minutes": round(est["minutes"].mid, 1),
+            "runs": len(rates), "limit": limit}
+
+
+def new_run_form() -> None:
+    mode = st.radio("Review", ["Evaluation topic", "Free question"], horizontal=True,
+                    key="new_mode")
+    topic = question = None
+    if mode == "Evaluation topic":
+        ids = topic_ids()
+        topic = st.selectbox("Topic (evaluation/topics.yaml)", ids, key="new_topic") if ids else None
+    else:
+        question = st.text_area("Research question", key="new_question",
+                                placeholder="e.g. Does exercise reduce depressive symptoms in "
+                                            "older adults?").strip() or None
+    c1, c2, c3 = st.columns(3)
+    limit = int(c1.number_input("--limit (records screened, 0 = all)", min_value=0,
+                                max_value=10000, value=100, step=50, key="new_limit"))
+    est = quick_estimate(limit)
+    budget = c2.number_input("Budget cap ($, 0 = none)", min_value=0.0, max_value=100.0,
+                             value=float(max(0.5, round((est or {}).get("high", 0.5) * 1.5, 2))),
+                             step=0.25, key="new_budget",
+                             help="Checked before every stage: the run pauses at the first stage "
+                                  "boundary where the billed spend has reached the cap (the stage "
+                                  "running then is finished, so the spend can overshoot a bit). "
+                                  "Raise the cap to go on.")
+    auto = c3.toggle("--auto (no pauses for a human)", value=False, key="new_auto",
+                     help="Off: you approve the protocol and resolve screening conflicts here.")
+    if est:
+        st.caption(f"Estimate for a fresh run at --limit {limit}: {money(est['mid'])} "
+                   f"({money(est['low'])} – {money(est['high'])}), ~{duration(est['minutes'] * 60)}, "
+                   f"from {est['runs']} finished runs. Cache hits cost $0, so a re-run costs less.")
+    if st.button("Start run", type="primary", key="start_btn",
+                 disabled=not (topic or question)):
+        rid = L.start(question=question, topic=topic, auto=auto, limit=limit,
+                      budget_usd=budget or None, estimate=est)
+        st.session_state["live_run"] = rid
+        st.rerun()
+
+
+def spend_bar(v: D.LiveView) -> None:
+    est = v.estimate or {}
+    ref = v.cap_usd or est.get("high") or est.get("mid")
+    bits = [f"Spent {money(v.spent_usd)}"]
+    if est:
+        bits.append(f"estimate {money(est.get('mid'))} ({money(est.get('low'))} – "
+                    f"{money(est.get('high'))})")
+    bits.append(f"cap {money(v.cap_usd)}" if v.cap_usd else "no cap")
+    st.progress(min(1.0, v.spent_usd / ref) if ref else 0.0, text=" · ".join(bits))
+    st.caption("Billed cost so far (LLM + embeddings); answers from the cache cost $0. The cap "
+               "is checked between stages." + (" Bar = share of the cap." if v.cap_usd else
+                                               " Bar = share of the high estimate." if ref else ""))
+
+
+def render_live(v: D.LiveView) -> None:
+    q = v.meta.get("question") or ""
+    if v.meta.get("topic"):
+        q = f"Topic {v.meta['topic']}" + (f": {q}" if q else "")
+    now = (f' · now: <b>{e(D.STAGE_LABELS.get(v.current, v.current))}</b>' if v.current else "")
+    st.markdown(
+        f'<div class="hero"><div class="eyebrow">Run {e(v.run_id)} · limit '
+        f'{e(str(v.meta.get("screen_limit", "–")))} · {"auto" if v.meta.get("auto") else "human in the loop"}'
+        f'</div><div class="q">{e(q or "(question from the topic)")}</div>'
+        f'<div class="meta">{pill(v.status)}{now}</div></div>', unsafe_allow_html=True)
+    c = v.counters
+    kpis([
+        ("Elapsed", clock(v.elapsed_s), f"{v.steps} coordinator steps"),
+        ("Unique records", _num(c["unique"]), "after deduplication"),
+        ("Screened", _num(c["screened"]), "title/abstract"),
+        ("Included (TA)", _num(c["ta_included"]), "to full text"),
+        ("Included (FT)", _num(c["ft_included"]), "studies in the review"),
+    ])
+    spend_bar(v)
+    if v.error:
+        st.error(v.error)
+    st.markdown('<div class="flow">' + "".join(stage_card_html(i + 1, card)
+                                                for i, card in enumerate(v.cards)) + "</div>",
+                unsafe_allow_html=True)
+    if v.last_event:
+        st.caption(f'Last event: {v.last_event.get("node")} · {v.last_event.get("event")}')
+
+
+def _num(x) -> str:
+    return "–" if x is None else f"{x:,}"
+
+
+@st.fragment(run_every=2)
+def _live_fragment(run_id: str) -> None:
+    v = D.live_view(runs_dir() / run_id, alive=L.is_alive(run_id))
+    render_live(v)
+    if v.status not in ("starting", "running"):
+        st.rerun()     # full page: show the form, the result or the resume button
+
+
+def page_live() -> None:
+    st.title("Live run")
+    rid = st.session_state.get("live_run")
+    with st.expander("Start a new run", expanded=not rid):
+        new_run_form()
+    if not rid:
+        st.info("Start a run above, or resume one from the Runs page.")
+        return
+    run_dir = runs_dir() / rid
+    v = D.live_view(run_dir, alive=L.is_alive(rid))
+    if v.status in ("starting", "running"):
+        _live_fragment(rid)
+    else:
+        render_live(v)
+        if v.status == "waiting" and v.pending:
+            pending_form(rid, v.pending)
+        elif v.status in ("stopped", "error", "ended"):
+            if st.button("Resume from the last checkpoint", type="primary", key="live_resume_btn"):
+                L.resume(rid)
+                st.rerun()
+        elif v.status == "finished":
+            st.success("Run finished: the report is written.")
+            if "detail" in PAGES and st.button("Open in Run detail", key="live_detail_btn"):
+                st.session_state["run_id"] = rid
+                st.switch_page(PAGES["detail"])
+    log = run_dir / "live.log"
+    if log.exists():
+        with st.expander("Progress log"):
+            st.code("\n".join(log.read_text().splitlines()[-40:]) or "(empty)", language=None)
+
+
+# --- Human in the loop: the three pauses, same answers as the CLI --------------------------
+
+def pending_form(run_id: str, payload: dict) -> None:
+    kind = payload.get("kind")
+    if payload.get("error"):
+        st.error(f"Previous answer refused: {payload['error']}")
+    if kind == "protocol_approval":
+        protocol_form(run_id, payload)
+    elif kind == "screening_conflicts":
+        conflicts_form(run_id, payload)
+    elif kind == "budget_cap":
+        budget_form(run_id, payload)
+    else:
+        st.warning(f"Unknown pause: {kind}")
+
+
+def _lines(text: str) -> list[str]:
+    return [x.strip() for x in text.splitlines() if x.strip()]
+
+
+def protocol_form(run_id: str, payload: dict) -> None:
+    p = payload["protocol"]
+    pico = p.get("pico") or {}
+    years = p.get("years") or {}
+    st.subheader("Approve the protocol")
+    st.markdown(f'<p class="note">Criteria from: {e(payload.get("criteria_source") or "Planner (LLM draft)")}. '
+                'Edit any field, then approve. Unchanged fields are not sent.</p>',
+                unsafe_allow_html=True)
+    for role, terms in (p.get("search_terms") or {}).items():
+        st.caption(f"Search block fixed by the topic ({role}): {', '.join(terms) or 'none'}")
+    with st.form("protocol_form"):
+        edited = {"question": st.text_input("Question", p.get("question") or "")}
+        c1, c2 = st.columns(2)
+        edited["pico.population"] = c1.text_input("Population", pico.get("population") or "")
+        edited["pico.intervention"] = c2.text_input("Intervention", pico.get("intervention") or "")
+        edited["pico.comparator"] = c1.text_input("Comparator", pico.get("comparator") or "")
+        edited["pico.outcomes"] = _lines(c2.text_area("Outcomes (one per line)",
+                                                      "\n".join(pico.get("outcomes") or [])))
+        edited["inclusion_criteria"] = _lines(st.text_area(
+            "Inclusion criteria (one per line)", "\n".join(p.get("inclusion_criteria") or []),
+            height=140))
+        edited["exclusion_criteria"] = _lines(st.text_area(
+            "Exclusion criteria (one per line)", "\n".join(p.get("exclusion_criteria") or []),
+            height=120))
+        edited["study_designs"] = _lines(st.text_area(
+            "Study designs (one per line, empty = no restriction)",
+            "\n".join(p.get("study_designs") or [])))
+        c1, c2, c3 = st.columns(3)
+        edited["databases"] = c1.multiselect("Databases", ["openalex", "pubmed", "arxiv"],
+                                             default=p.get("databases") or [])
+        start = c2.number_input("From year (0 = none)", 0, 2100, years.get("start") or 0)
+        end = c3.number_input("To year (0 = none)", 0, 2100, years.get("end") or 0)
+        if (start or None) != years.get("start"):
+            edited["years.start"] = int(start) or None
+        if (end or None) != years.get("end"):
+            edited["years.end"] = int(end) or None
+        accept = False
+        if payload.get("suggested_designs"):
+            accept = st.checkbox(f"Accept the suggested designs: {', '.join(payload['suggested_designs'])} "
+                                 f"({payload.get('design_reason') or ''})", key="accept_designs")
+        if st.form_submit_button("Approve and continue", type="primary"):
+            answer = L.protocol_answer(p, edited, accept)
+            L.resume(run_id, kind="protocol_approval", answer=answer)
+            st.rerun()
+
+
+def _vote(v: dict | None) -> str:
+    v = v or {}
+    quote = v.get("quote") or next((x.get("quote") for x in v.get("verdicts") or []
+                                    if x.get("criterion") == v.get("criterion") and x.get("quote")), "")
+    head = f"**{v.get('decision') or v.get('reason') or 'n/a'}**"
+    if v.get("criterion"):
+        head += f" ({v['criterion']})"
+    return head + (f"  \n_“{quote}”_" if quote else "")
+
+
+def conflicts_form(run_id: str, payload: dict) -> None:
+    papers = payload.get("papers") or []
+    st.subheader(f"Resolve screening conflicts · {payload.get('stage')} · {len(papers)} papers")
+    st.markdown('<p class="note">The two screeners disagreed and the adjudicator could not decide. '
+                'Your answer is final and logged as resolved by human.</p>', unsafe_allow_html=True)
+    with st.form("conflicts_form"):
+        answer = {}
+        for p in papers:
+            with st.container(border=True):
+                st.markdown(f"**{p.get('title') or p['paper_id']}**  \n`{p['paper_id']}`")
+                a, b, adj = st.columns(3)
+                a.markdown("Screener A: " + _vote(p.get("screener_a")))
+                b.markdown("Screener B: " + _vote(p.get("screener_b")))
+                adj.markdown("Adjudicator: " + _vote(p.get("adjudicator")))
+                answer[p["paper_id"]] = st.radio("Decision", ["include", "exclude"],
+                                                 horizontal=True, key=f"conf_{p['paper_id']}")
+        if st.form_submit_button("Submit decisions", type="primary"):
+            L.resume(run_id, kind="screening_conflicts", answer=answer)
+            st.rerun()
+
+
+def budget_form(run_id: str, payload: dict) -> None:
+    spent, cap = payload.get("spent_usd") or 0.0, payload.get("budget_usd") or 0.0
+    st.subheader("Budget cap reached")
+    st.markdown(f'<p class="note">Spent {money(spent)} of the {money(cap)} cap. The run is paused '
+                'between two stages and is saved: raise the cap to continue now, or leave it '
+                'paused and resume later from the Runs page.</p>', unsafe_allow_html=True)
+    with st.form("budget_form"):
+        new = st.number_input("New cap ($)", min_value=0.0, max_value=1000.0,
+                              value=float(round(max(cap * 2, spent + 0.5), 2)), step=0.25,
+                              key="new_cap")
+        remove = st.checkbox("Remove the cap", key="remove_cap")
+        if st.form_submit_button("Continue", type="primary"):
+            L.resume(run_id, kind="budget_cap",
+                     answer={"budget_usd": None} if remove else float(new))
+            st.rerun()

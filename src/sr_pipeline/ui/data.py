@@ -14,9 +14,15 @@ from the LLM disk cache costs $0), but token counts include cached calls. The vi
 the billed cost (it must match ``run_summary.json``); the estimator re-prices all tokens with
 ``llm.PRICES`` (a new topic starts with an empty cache, so every call is paid).
 
-Time per stage is not logged by the pipeline (audit entries are written together at the end
-of a run), so the viewer shows the total time only and the estimator apportions time by
-LLM calls (seconds per non-cached call, measured per run).
+Time per stage: runs from Part 11b on stamp every audit entry with ``started_at`` /
+``ended_at`` / ``duration_s`` and write it as soon as the node ends; the viewer then shows
+time per stage (``stage_progress``). Older runs have no stamps (their entries were written
+together at the end), so the viewer shows the total time only and the estimator apportions
+time by LLM calls (seconds per non-cached call, measured per run).
+
+Live runs (Part 11b): ``live_view`` builds the stage cards, counters and spend of a run that
+is still going from ``run.json``, ``live.json`` (status written by ``ui/live.py``) and
+``audit.jsonl`` alone: ``state.json`` and the report exist only at the end.
 """
 
 from __future__ import annotations
@@ -27,8 +33,10 @@ import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ..coordinator import spent_usd
 from ..guardrail import STAGES, is_fresh
 from ..llm import PRICES, compute_cost
+from ..reporting.summary import _calls
 from ..state import latest
 
 STAGE_LABELS: dict[str, str] = {
@@ -214,6 +222,8 @@ class StageCard:
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
+    seconds: float | None = None      # summed over its runs; None = not logged (pre-11b run)
+    failed: bool = False              # its last run logged an error signature (Part 10d)
 
 
 def _n(value) -> str:
@@ -268,6 +278,7 @@ def stage_cards(run: Run) -> list[StageCard]:
         if e["outcome"] == "refused":
             refusals[e["proposed"]] = refusals.get(e["proposed"], 0) + 1
     counts = _stage_counts(run)
+    prog = stage_progress(run.audit)
     cards = []
     for s in STAGES:
         runs = completed.count(s)
@@ -279,8 +290,178 @@ def stage_cards(run: Run) -> list[StageCard]:
             refused=refusals.get(s, 0), count_in=c_in, count_out=c_out,
             calls=u.get("calls", 0), cached=u.get("cached", 0),
             input_tokens=u.get("input_tokens", 0), output_tokens=u.get("output_tokens", 0),
-            cost_usd=u.get("cost_usd", 0.0)))
+            cost_usd=u.get("cost_usd", 0.0), seconds=prog[s]["seconds"],
+            failed=prog[s]["failed"]))
     return cards
+
+
+# --- Time and spend per stage from the audit alone (Part 11b) -------------------------------
+
+# Nodes that are not stages but belong to one (their time and cost go to that stage's card).
+NODE_STAGE = {"ta_conflicts": "ta_screening", "ft_conflicts": "ft_screening",
+              "protocol_approval": "planner"}
+
+
+def _run_key(e: dict):
+    """One node run: its node and start stamp (pre-11b entries have none: one entry = one run)."""
+    return (e.get("node"), e.get("started_at") or id(e))
+
+
+def stage_progress(audit: list[dict]) -> dict[str, dict]:
+    """Per stage: runs, LLM calls / cached / tokens / billed $ (embeddings included), seconds
+    (summed over runs, from the time stamps; None when the run has none) and whether its last
+    run failed. One node run returns one or more entries sharing the same stamps, so time is
+    counted once per (node, started_at)."""
+    out = {s: {"runs": 0, "calls": 0, "cached": 0, "input_tokens": 0, "output_tokens": 0,
+               "cost_usd": 0.0, "seconds": None, "failed": False, "last": None}
+           for s in [*STAGES, "coordinator"]}
+    timed: set = set()
+    for e in audit:
+        node = e.get("node")
+        stage = NODE_STAGE.get(node, node)
+        if stage not in out:
+            continue
+        o = out[stage]
+        calls, cached = _calls(e)
+        o["calls"] += calls
+        o["cached"] += cached
+        o["input_tokens"] += e.get("input_tokens") or 0
+        o["output_tokens"] += e.get("output_tokens") or 0
+        o["cost_usd"] += (e.get("cost_usd") or 0.0) + (e.get("embed_cost_usd") or 0.0)
+        if e.get("duration_s") is not None and _run_key(e) not in timed:
+            timed.add(_run_key(e))
+            o["seconds"] = (o["seconds"] or 0.0) + e["duration_s"]
+        if node == stage and stage in STAGES and e.get("event"):
+            if ("run", _run_key(e)) not in timed:
+                timed.add(("run", _run_key(e)))
+                o["runs"] += 1
+            o["failed"] = bool(e.get("failed"))
+            o["last"] = e
+    return out
+
+
+# --- Live run (Part 11b) ----------------------------------------------------------------
+
+@dataclass
+class LiveView:
+    run_id: str
+    meta: dict
+    status: str              # starting / running / waiting / finished / ended / error / stopped
+    pending: dict | None     # interrupt payload when status == "waiting"
+    error: str | None
+    current: str | None      # stage running now (None between stages or when not running)
+    cards: list[StageCard]
+    counters: dict           # unique / screened / ta_included / ft_included (None = not yet)
+    spent_usd: float
+    cap_usd: float | None
+    estimate: dict | None    # {"low", "mid", "high"} in $, stored in run.json at start
+    steps: int
+    elapsed_s: float | None
+    last_event: dict | None
+
+
+def _completed_from_audit(audit: list[dict]) -> list[str]:
+    """completed_stages rebuilt from the audit (one item per stage run, in order)."""
+    done, seen = [], set()
+    for e in audit:
+        node = e.get("node")
+        if node in STAGES and e.get("event") and _run_key(e) not in seen:
+            seen.add(_run_key(e))
+            done.append(node)
+    return done
+
+
+def _last(audit: list[dict], node: str) -> dict:
+    return next((e for e in reversed(audit) if e.get("node") == node and e.get("event")), {})
+
+
+def live_view(run_dir: Path, *, status: dict | None = None, alive: bool | None = None,
+              now: float | None = None) -> LiveView:
+    """Everything the live page shows, from files only. ``status``: the parsed live.json (read
+    from disk when None); ``alive``: whether a worker thread runs this run in this process
+    (None = trust live.json). A run marked running with no live worker was stopped (app
+    closed, crash): it shows as ``stopped`` and can be resumed."""
+    from datetime import datetime, timezone
+
+    meta = _json(run_dir / "run.json") or {}
+    status = status if status is not None else (_json(run_dir / "live.json") or {})
+    audit = read_audit(run_dir)
+    state = status.get("status") or ("finished" if (run_dir / "report" / "run_summary.json")
+                                     .exists() else "stopped")
+    if state in ("starting", "running") and alive is False:
+        state = "stopped"
+    completed = _completed_from_audit(audit)
+    prog = stage_progress(audit)
+    decisions = [e for e in audit if e.get("node") == "coordinator" and "outcome" in e]
+    current = None
+    if state in ("starting", "running") and decisions:
+        last = decisions[-1]
+        ran = last.get("substituted") or last.get("proposed")
+        after = audit[audit.index(last) + 1:]
+        if not any(e.get("node") == ran for e in after):
+            current = ran
+    refusals: dict[str, int] = {}
+    for e in decisions:
+        if e.get("outcome") == "refused":
+            refusals[e.get("proposed")] = refusals.get(e.get("proposed"), 0) + 1
+    ret, ta, ft = _last(audit, "retrieval"), _last(audit, "ta_screening"), _last(audit,
+                                                                                   "ft_screening")
+    ext, syn, cri = _last(audit, "extraction"), _last(audit, "synthesis"), _last(audit, "critic")
+    rep = _last(audit, "report")
+    io = {
+        "planner": ("question", "protocol" if prog["planner"]["runs"] else "–"),
+        "search_strategy": ("protocol", f"{len((_last(audit, 'search_strategy').get('queries') or {}))} queries"
+                            if prog["search_strategy"]["runs"] else "–"),
+        "retrieval": (f"{_n(ret.get('identified'))} identified", f"{_n(ret.get('records_screened'))} unique"),
+        "ta_screening": (f"{_n(ta.get('records_screened'))} screened", f"{_n(ta.get('included'))} included"),
+        "ft_screening": (f"{_n(ft.get('reports_sought'))} sought", f"{_n(ft.get('studies_included'))} included"),
+        "extraction": ("included studies", f"{_n(ext.get('studies'))} extracted"),
+        "synthesis": (f"{_n(syn.get('studies'))} studies", f"{_n(syn.get('sentences'))} sentences"),
+        "critic": (f"{_n(cri.get('blockers'))} blockers · {_n(cri.get('warnings'))} warnings",
+                   "–" if not cri else "passed" if cri.get("passed") else "not passed"),
+        "report": ("all stages fresh" if rep else "–",
+                   f"{len(rep.get('files') or [])} files" if rep else "–"),
+    }
+    cards = []
+    for s in STAGES:
+        p = prog[s]
+        runs = completed.count(s)
+        st = ("running" if s == current else "done" if is_fresh(s, completed)
+              else "stale" if runs else "not run")
+        cards.append(StageCard(
+            stage=s, label=STAGE_LABELS.get(s, s), status=st, runs=runs,
+            refused=refusals.get(s, 0), count_in=io[s][0], count_out=io[s][1],
+            calls=p["calls"], cached=p["cached"], input_tokens=p["input_tokens"],
+            output_tokens=p["output_tokens"], cost_usd=p["cost_usd"], seconds=p["seconds"],
+            failed=p["failed"]))
+    cap = meta.get("budget_usd")
+    for e in audit:
+        if e.get("node") == "budget_pause":
+            cap = e.get("budget_usd")
+    elapsed = None
+    if meta.get("started_at"):
+        start = datetime.fromisoformat(meta["started_at"]).timestamp()
+        end = now if now is not None else datetime.now(timezone.utc).timestamp()
+        if state not in ("starting", "running", "waiting"):
+            stamps = [e.get("ended_at") or e.get("written_at") for e in audit]
+            stamps = [x for x in stamps if x]
+            end = datetime.fromisoformat(max(stamps)).timestamp() if stamps else start
+        elapsed = max(0.0, end - start)
+    steps = max([e.get("step") or 0 for e in decisions] or [0])
+    return LiveView(
+        run_id=run_dir.name, meta=meta, status=state, pending=status.get("pending"),
+        error=status.get("error"), current=current, cards=cards,
+        counters={"unique": ret.get("records_screened"), "screened": ta.get("records_screened"),
+                  "ta_included": ta.get("included"), "ft_included": ft.get("studies_included")},
+        spent_usd=spent_usd(audit), cap_usd=cap, estimate=meta.get("estimate"),
+        steps=steps, elapsed_s=elapsed,
+        last_event=next((e for e in reversed(audit) if e.get("event")), None))
+
+
+def resumable(run_dir: Path) -> bool:
+    """A run that can be continued: it has its arguments and a checkpoint, and no report."""
+    return ((run_dir / "run.json").exists() and (run_dir / "checkpoints.sqlite").exists()
+            and not (run_dir / "report" / "run_summary.json").exists())
 
 
 def coordinator_steps(run: Run) -> list[dict]:

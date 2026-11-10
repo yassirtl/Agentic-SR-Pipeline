@@ -284,6 +284,12 @@ def check_outputs(cfg, run_id, state):
                                                "synthesis", "critic"}
     audit = [json.loads(x) for x in (run_dir / "audit.jsonl").read_text().splitlines()]
     assert audit[-1]["node"] == "report"
+    # Part 11b: written live, node by node, yet the file is exactly the state's log, in order
+    # (no line lost or written twice across pauses, quits and crash-resumes).
+    on_disk = [{k: v for k, v in e.items() if k not in ("run_id", "written_at")} for e in audit
+               if e.get("event") != "report re-rendered (--report-only)"]   # file-only line
+    assert on_disk == json.loads(json.dumps(state["audit_log"], default=str))
+    assert all("started_at" in e and "duration_s" in e for e in on_disk)
     assert not [e for e in audit if e.get("outcome") == "llm_error"]
 
 

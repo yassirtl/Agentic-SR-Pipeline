@@ -4,6 +4,11 @@ The audit log lives in the graph state (append-only list). ``AuditWriter.sync``
 copies the entries that are not on disk yet, so it can be called after every
 invoke / resume without duplicating lines. JSONL is append-only and stays
 readable if a run stops halfway.
+
+Part 11b: the CLI writes each node's entries as soon as the node ends (``append``), so the
+UI can follow a run live; ``sync`` then only catches up after a pause, a crash or a resume.
+Both keep ``written`` equal to the number of state entries on disk, so nothing is written
+twice.
 """
 
 import json
@@ -40,6 +45,10 @@ class AuditWriter:
                                         **entry}, default=str) + "\n")
             self.written += len(new)
         return len(new)
+
+    def append(self, entries: list[dict]) -> int:
+        """Write the entries one node just returned (they are the next ones in the state)."""
+        return self.sync([None] * self.written + list(entries))
 
     def save_state(self, state: dict) -> Path:
         """Snapshot of the full state (for inspection; the checkpointer is the real store)."""

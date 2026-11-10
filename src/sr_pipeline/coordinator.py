@@ -1,5 +1,6 @@
 """Coordinator (supervisor): an LLM picks the next stage, the guardrail checks it."""
 
+from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from .agents.critic import describe_qa
@@ -13,6 +14,7 @@ from .llm import LLM, is_fatal
 from .state import ReviewState
 
 END_SIGNAL = "__end__"  # next_stage value that routes the graph to END
+BUDGET_SIGNAL = "budget_pause"  # next_stage value that routes to the budget pause (Part 11b)
 MAX_RESEARCHES = 2      # re-runs of search_strategy allowed after the first one
 
 LIST_FIELDS = ("records", "unique_records", "ta_decisions", "ft_decisions",
@@ -149,6 +151,70 @@ def build_prompt(state: ReviewState) -> str:
     )
 
 
+# --- Budget cap in dollars (Part 11b) ------------------------------------------------------
+# Code-enforced, checked by the coordinator before every step (= at a stage boundary): a
+# stage that is running is never cut, so the last stage can overshoot the cap. Spent = billed
+# LLM cost of the audit entries (cache hits cost $0; an unpriced model counts $0) plus the
+# embedding cost stamped on each node by ``graph.timed``.
+
+def spent_usd(audit_log: list[dict]) -> float:
+    return round(sum((e.get("cost_usd") or 0.0) + (e.get("embed_cost_usd") or 0.0)
+                     for e in audit_log if isinstance(e, dict)), 8)
+
+
+def budget_stop(state: ReviewState) -> dict | None:
+    """Audit entry that pauses the run when the spend has reached the cap, else None."""
+    cap = (state.get("run") or {}).get("budget_usd")
+    if cap is None:
+        return None
+    spent = spent_usd(state.get("audit_log", []))
+    if spent < cap:
+        return None
+    return {"node": "coordinator", "step": state.get("steps_taken", 0),
+            "event": "stopped: budget cap", "spent_usd": spent, "budget_usd": cap,
+            "detail": f"spent ${spent:.4f} of a ${cap:.2f} cap: paused before the next stage "
+                      "(raise the cap to continue)"}
+
+
+def parse_cap(answer, spent: float) -> float | None:
+    """New cap from a human answer: a number above the spend, ``{"budget_usd": x}``, or
+    None / ``{"budget_usd": None}`` to remove the cap. Raises ValueError otherwise."""
+    if isinstance(answer, dict) and set(answer) == {"budget_usd"}:
+        answer = answer["budget_usd"]
+    if answer is None:
+        return None
+    if isinstance(answer, bool) or not isinstance(answer, (int, float)):
+        raise ValueError(f"unrecognised answer: {answer!r} (give a new cap in $)")
+    if answer <= spent:
+        raise ValueError(f"the new cap ${answer:.2f} is not above the ${spent:.4f} spent")
+    return float(answer)
+
+
+def budget_pause(state: ReviewState) -> dict:
+    """Pause until a human raises (or removes) the cap. Not a stage: the guardrail never sees
+    it. Leaving the run paused is the clean stop: it resumes from the Runs page or with
+    ``sr-review --resume``."""
+    run = state.get("run") or {}
+    spent = spent_usd(state.get("audit_log", []))
+    error, asked = None, 0
+    while True:
+        asked += 1
+        answer = interrupt({"kind": "budget_cap", "spent_usd": spent,
+                            "budget_usd": run.get("budget_usd"), "error": error,
+                            "help": "resume with a new cap in $ above the spend, or "
+                                    "{'budget_usd': None} to remove the cap"})
+        try:
+            new = parse_cap(answer, spent)
+            break
+        except ValueError as exc:
+            error = str(exc)
+    return {"run": {**run, "budget_usd": new},
+            "audit_log": [{"node": "budget_pause", "step": state.get("steps_taken", 0),
+                           "event": "budget cap raised" if new is not None
+                           else "budget cap removed", "previous_cap_usd": run.get("budget_usd"),
+                           "budget_usd": new, "spent_usd": spent, "attempts": asked}]}
+
+
 def coordinator_step(state: ReviewState, llm: LLM, max_steps: int = MAX_STEPS) -> dict:
     steps = state.get("steps_taken", 0)
     if steps >= max_steps:
@@ -160,6 +226,9 @@ def coordinator_step(state: ReviewState, llm: LLM, max_steps: int = MAX_STEPS) -
 
     if (stop := repeated_failure(state)):
         return {"next_stage": END_SIGNAL, "audit_log": [stop]}
+
+    if (stop := budget_stop(state)):
+        return {"next_stage": BUDGET_SIGNAL, "audit_log": [stop]}
 
     completed = state.get("completed_stages", [])
     try:
