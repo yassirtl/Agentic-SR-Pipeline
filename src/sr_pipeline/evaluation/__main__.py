@@ -177,8 +177,11 @@ def render(ctx: dict, results: dict) -> str:
                   ""]
         m = tc.get("manual")
         if isinstance(m, dict):
-            lines += [f"Manual estimate ({m['source']}): {m['hours']} h → time saved "
-                      f"{_pct(tc.get('time_saved_share'))}.", ""]
+            per = ", ".join(f"{k} {v}" for k, v in m["days_per_task"].items())
+            lines += [f"Manual estimate for the same workload ({m['source']}): "
+                      f"{m['person_days']} person-days ({per}); screening, extraction "
+                      f"and risk of bias only (no protocol, search, synthesis or writing).",
+                      ""]
         elif m:
             lines += [m, ""]
         if tc.get("benchmark"):

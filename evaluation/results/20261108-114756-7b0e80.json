@@ -1,0 +1,151 @@
+{
+  "run_id": "20261108-114756-7b0e80",
+  "topic": "T2",
+  "label_problems": [],
+  "completeness": {
+    "extraction_completeness": {
+      "studies": 75,
+      "scope": "topic fields",
+      "fields": 975,
+      "reported": 237,
+      "share_reported": 0.2431,
+      "by_text": {
+        "full text": {
+          "reported": 148,
+          "fields": 533,
+          "share": 0.2777
+        },
+        "abstract only": {
+          "reported": 89,
+          "fields": 442,
+          "share": 0.2014
+        }
+      },
+      "topic_fields": [
+        "arithmetic",
+        "classes",
+        "classification_metrics",
+        "clock",
+        "dataset",
+        "latency",
+        "memory",
+        "model",
+        "operations",
+        "parameters",
+        "partition",
+        "platform",
+        "power_energy"
+      ],
+      "all_fields": {
+        "reported": 618,
+        "fields": 2175,
+        "share": 0.2841
+      }
+    },
+    "prisma_consistency": {
+      "consistent": true,
+      "checks": {
+        "identified - not downloaded - duplicates - automation - not screened = screened": true,
+        "screened - excluded = sought": true,
+        "sought - excluded = included": true
+      }
+    },
+    "critic": {
+      "passed": true,
+      "blockers": 0,
+      "warnings": 4,
+      "loops_used": 0
+    }
+  },
+  "accuracy": {},
+  "consistency": {
+    "screener_agreement": {
+      "ta": {
+        "pairs": 94,
+        "kappa": 0.0041,
+        "agreement": 0.1702,
+        "resolved_by": {
+          "adjudicator": 70,
+          "human": 9,
+          "agreement": 15,
+          "d_title_rule": 6
+        },
+        "adjudicated_share": 0.7,
+        "quotes_not_found": 30,
+        "llm_errors": 0
+      },
+      "ft": {
+        "pairs": 78,
+        "kappa": -0.0667,
+        "agreement": 0.7949,
+        "resolved_by": {
+          "agreement": 62,
+          "adjudicator": 16
+        },
+        "adjudicated_share": 0.2051,
+        "quotes_not_found": 26,
+        "llm_errors": 0
+      }
+    },
+    "coordinator": {
+      "steps": 9,
+      "decisions": {
+        "accepted": 8,
+        "refused": 1
+      },
+      "refusals": [
+        {
+          "step": 5,
+          "proposed": "search_strategy",
+          "reason": "title/abstract screening included 78 records: no reason to search again",
+          "substituted": "ft_screening"
+        }
+      ],
+      "budget_exhausted": false,
+      "stages_run": [
+        "planner",
+        "search_strategy",
+        "retrieval",
+        "ta_screening",
+        "ft_screening",
+        "extraction",
+        "synthesis",
+        "critic"
+      ]
+    }
+  },
+  "time": {
+    "time_cost": {
+      "seconds": 2681.4,
+      "hours": 0.74,
+      "seconds_note": "wall clock from start to finish: includes human pauses and the time between a crash and its --resume",
+      "llm_calls": 1674,
+      "llm_calls_cached": 857,
+      "cost_usd": 0.4383,
+      "cost_is_lower_bound": false,
+      "cost_per_screened_record": 0.0044,
+      "counts": {
+        "screened": 100,
+        "full_text": 78,
+        "included": 75
+      },
+      "manual": {
+        "days_per_task": {
+          "title_abstract": 0.57,
+          "full_text": 1.95,
+          "extraction": 10.87,
+          "risk_of_bias": 6.41
+        },
+        "person_days": 19.8,
+        "counts": {
+          "title_abstract": 100,
+          "full_text": 78,
+          "extraction": 75,
+          "risk_of_bias": 75
+        },
+        "source": "PredicTER R package defaults (Haddaway & Westgate 2019), github.com/nealhaddaway/predicter, read 2026-11-10"
+      },
+      "benchmark": "Haddaway & Westgate 2019: an average environmental systematic review takes about 164 full-time-equivalent days (66 CEE reviews, 2012-2017)."
+    }
+  }
+}

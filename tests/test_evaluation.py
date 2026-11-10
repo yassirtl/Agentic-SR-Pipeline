@@ -218,15 +218,17 @@ def test_plug_in_metric():
 
 def test_manual_estimate_never_guessed():
     counts = {"screened": 100, "full_text": 10, "included": 5}
-    empty = {"minutes_per_item": {"title_abstract": 0.5, "full_text": None,
-                                  "extraction": 30, "risk_of_bias": 15}}
+    empty = {"items_per_day": {"title_abstract": 200, "full_text": None,
+                               "extraction": 5, "risk_of_bias": 10}}
     assert manual_estimate(empty, counts) is None
-    full = {"reviewers": 2, "source": "test", "fixed_hours": {"protocol": 4},
-            "minutes_per_item": {"title_abstract": 0.5, "full_text": 6,
-                                 "extraction": 30, "risk_of_bias": 12}}
+    full = {"source": "test",
+            "items_per_day": {"title_abstract": 200, "full_text": 40,
+                              "extraction": 5, "risk_of_bias": 10},
+            "checked_percent": {"title_abstract": 10, "full_text": 10}}
     m = manual_estimate(full, counts)
-    # (0.5*100*2 + 6*10*2 + 30*5 + 12*5) / 60 + 4 = (100 + 120 + 150 + 60) / 60 + 4
-    assert m["hours"] == round(430 / 60 + 4, 1)
+    # 100/200*1.1 + 10/40*1.1 + 5/5 + 5/10 = 0.55 + 0.275 + 1 + 0.5
+    assert m["days_per_task"]["title_abstract"] == 0.55
+    assert m["person_days"] == round(0.55 + 0.28 + 1 + 0.5, 1)
 
 
 def write_run(tmp_path, name, limit):

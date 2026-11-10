@@ -29,7 +29,7 @@ Python 3.11, macOS or Linux.
 ```bash
 python3.11 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
-.venv/bin/pytest -q            # 285 tests, no network, no API key (scripted fake LLM)
+.venv/bin/pytest -q            # 348 tests, no network, no API key (scripted fake LLM)
 ```
 
 Embeddings use the OpenAI API (`text-embedding-3-small`), so no PyTorch is needed.
@@ -87,24 +87,31 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 | Criterion | Metrics |
 |---|---|
 | Completeness | gold studies kept at each stage (coverage, search, screening limit, title/abstract, full text) with the reason each one was lost; recall vs all gold and vs gold present in our databases; extraction fields reported with a verified quote (T2/T3: only the topic's own engineering fields; all fields shown apart); PRISMA arithmetic checks; critic outcome |
-| Accuracy | gold share of our includes (a lower bound on precision); title/abstract screening vs a human-labelled sample: accuracy, sensitivity, specificity, kappa, disagreements |
+| Accuracy | gold share of our includes (a lower bound on precision); title/abstract screening vs a human-labelled sample when one is filled in (accuracy, sensitivity, specificity, kappa, disagreements) |
 | Inter-agent consistency | kappa and agreement of screener A vs B per stage, share adjudicated; coordinator decisions and guardrail refusals |
-| Time savings | run time, LLM calls, cost; against a manual estimate when `evaluation/manual_effort.yaml` is filled with sourced rates |
+| Time savings | run time, LLM calls, cost; next to a manual estimate in person-days from the sourced rates in `evaluation/manual_effort.yaml` (PredicTER defaults) |
 
-## Results so far
+## Results
 
-| Topic | Gold review | Run | Gold: all → in our databases → found by search → screened → kept TA → kept FT | Included | Cost |
-|---|---|---|---|---|---|
-| T1 smartwatches, arrhythmia | Nazarian 2021 (18 studies) | pending | | | |
-| T2 lightweight ML, abnormal vs normal ECG, constrained devices | none: new review (human labels only) | pending | not applicable | | |
-| T3 ML ECG classification on embedded devices | Arredondo-Velazquez 2026 (30 embedded implementations; 30 in OpenAlex, 16 in PubMed) | pending | | | |
-| D0 exercise, depression, older adults (development topic) | Li 2024 (15 articles) | `--topic T3 --limit 100` (run when D0 was called T3) | 15 → 11 → 7 → 3 → 2 → 1 | 28 | $0.37 |
+Full analysis, figures and limitations: [docs/report/report.pdf](docs/report/report.pdf). All numbers come from `python -m sr_pipeline.evaluation evaluate RUN` (copies in `evaluation/results/`); gpt-4o-mini for every agent, `--auto`.
 
-Topics were revised on 2026-11-08 (`docs/PLAN.md` §4b): T2 and T3 are in the ML-on-ECG,
-on-device field; the exercise topic, on which the search and screening rules were tuned,
-became the development topic D0 (evaluate its run with `--topic D0`).
+| Topic | Gold review | Version | Gold: all → in our databases → found by search → screened → kept TA → kept FT | Final recall | Included (gold share) | Cost, time |
+|---|---|---|---|---|---|---|
+| T1 smartwatches, arrhythmia | Nazarian 2021 (18 studies) | **v1, held out**, limit 100 | 18 → 18 → 9 → 9 → 9 → 8 | **44.4%** | 27 (29.6%) | $0.27, 0.14 h |
+| | | v2 + D fix, limit 500 (post hoc) | 18 → 18 → 13 → 13 → 13 → 12 | 66.7% | 252 (4.8%) | $1.04*, 0.46 h |
+| T3 ML ECG classification on embedded devices | Arredondo-Velázquez 2026 (30 embedded implementations) | **v1, held out**, limit 100 | 30 → 30 → 8 → 5 → 5 → 5 | **16.7%** | 55 (9.1%) | $0.49, 0.23 h |
+| | | v2 + D fix, limit 500 (post hoc) | 30 → 30 → 17 → 17 → 17 → 16 | 53.3% | 293 (5.5%) | $0.52*, 0.45 h |
+| T2 lightweight ML, abnormal vs normal ECG, constrained devices | none: new review | v2, limit 100 | not applicable | not measured | 55 | $0.57, 0.23 h |
+| D0 exercise, depression, older adults (development topic) | Li 2024 (15 articles) | limit 100 | 15 → 11 → 7 → 3 → 2 → 1 | 6.7% | 28 (3.6%) | $0.37, 1.4 h |
 
-D0 (first full run, 2026-11-08): the search found 7 of the 11 gold articles our databases hold (64%); 4 gold articles are in Chinese journals indexed by neither OpenAlex nor PubMed. With the default limit of the 100 most relevant records (of 3,631), 4 of the 7 found were never screened (best database ranks 56–382). Of the 3 screened, Makizako 2019 was included; Shahidi 2011 and Huang 2015 were excluded on "interventions beyond exercise": both are three-arm trials (exercise / laughter yoga or CBT / control) judged by their extra arm instead of the exercise-vs-control pair, a screening error. So the losses come from the screening limit and the search first, then from one screening error repeated. Screener agreement was low (kappa 0.25 at title/abstract, 0.19 at full text: the strict and lenient screeners are designed to differ), the critic passed with 3 warnings, and the PRISMA counts add up. These results are from the development topic; T1/T2/T3 runs, a run without the screening limit and a human-labelled sample are still to come.
+\* marginal cost: most LLM answers came from the cache of earlier runs. "Gold share" is a lower bound on precision (an include outside the gold list may still be eligible).
+
+- **Held out vs post hoc.** v1 is the frozen pipeline before any change. v2 (search fixes) and the D fix (a bug in the design check) were made after seeing the v1 and limit-500 results, so the final numbers are post hoc (report §3.1).
+- **What raised recall.** Search fixes: gold found 9 → 13 (T1), 8 → 17 (T3). Screening every record instead of the top 100: +16.7 points on both topics. D fix: no gold study lost on the design criterion (T1 2 → 0, T3 5 → 0), +5.6 and +13.3 points.
+- **What it cost.** Precision fell to about 5%: about 90% of the final includes were judged on the abstract only (no open-access full text), where the rules never exclude for missing information. Title/abstract screener agreement fell to kappa ≈ 0 after the D fix (the adjudicator decides most records).
+- **What is still lost.** Mostly the query (T1 5, T3 13 gold studies never returned, though all are in OpenAlex); one full-text judgement per topic. Screening kept 28 of the 30 gold studies it saw.
+- **Accuracy against human labels: not measured** (labelling skipped, 2026-11-10); T2's accuracy is unknown.
+- **Time.** For the same workload (screening, extraction, risk of bias), the PredicTER default rates (Haddaway & Westgate 2019; `evaluation/manual_effort.yaml`) give 69 (T1) and 80 (T3) person-days; the pipeline took under half an hour. Most of those days are extraction of includes a human would have excluded first (report §4.6).
 
 ## Layout
 
@@ -123,4 +130,5 @@ protocols/template.yaml   evaluation/   tests/   docs/PLAN.md
 - Only free databases (OpenAlex, PubMed, arXiv): articles indexed only in Embase, Scopus, Cochrane or Chinese databases cannot be found.
 - Full text only when open access (PMC XML or an open PDF); other studies are screened and extracted from the abstract, and flagged.
 - gpt-4o-mini by default: screener agreement is modest and criteria wording drives exclusions (see the screening tuning log in docs/PLAN.md).
-- The screening limit (default 100 records) trades recall for cost; use `--limit 0` for a complete review.
+- The screening limit (default 100 records) trades recall for cost (+17 recall points at 500 on T1 and T3); use `--limit 0` for a complete review.
+- Low precision (about 5% gold share at limit 500) and title/abstract screener agreement near 0: the includes need a human check.

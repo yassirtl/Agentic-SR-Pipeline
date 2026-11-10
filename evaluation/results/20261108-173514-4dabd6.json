@@ -453,7 +453,22 @@
         "full_text": 38,
         "included": 27
       },
-      "manual": "manual_effort.yaml has empty rates: no manual estimate computed",
+      "manual": {
+        "days_per_task": {
+          "title_abstract": 0.46,
+          "full_text": 0.95,
+          "extraction": 3.91,
+          "risk_of_bias": 2.31
+        },
+        "person_days": 7.6,
+        "counts": {
+          "title_abstract": 80,
+          "full_text": 38,
+          "extraction": 27,
+          "risk_of_bias": 27
+        },
+        "source": "PredicTER R package defaults (Haddaway & Westgate 2019), github.com/nealhaddaway/predicter, read 2026-11-10"
+      },
       "benchmark": "Haddaway & Westgate 2019: an average environmental systematic review takes about 164 full-time-equivalent days (66 CEE reviews, 2012-2017)."
     }
   }

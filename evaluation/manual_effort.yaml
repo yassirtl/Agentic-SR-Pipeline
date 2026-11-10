@@ -1,26 +1,35 @@
 # Manual effort model for the "time savings" criterion (Part 10, sr_pipeline.evaluation).
 #
-# manual hours = sum(minutes per item x this run's counts) / 60 + fixed hours
-#   title_abstract, full_text: per record and per reviewer (x reviewers: dual screening)
-#   extraction, risk_of_bias: per included study (one reviewer + checking folded in)
-# Counts come from the run (records screened, full texts sought, studies included).
+# person-days per stage = items / items_per_day x (1 + checked_percent / 100)
+# (the PredicTER formula, read in its R source: R/tscreen.time.R ... R/dataextr.time.R).
+# Items come from the run: records screened at title/abstract, full texts sought,
+# studies included (extraction and risk of bias). Result in person-days, never hours:
+# the source does not say how long a day is.
 #
-# Every rate is left empty on purpose: the evaluation computes NO manual estimate until
-# all of them are filled with values whose source is stated below (no guessed numbers).
-# Candidate source: Haddaway NR, Westgate MJ. Predicting the time needed for
-# environmental systematic reviews and systematic maps. Conserv Biol 2019;33(2):434-443
-# (PredicTER tool, defaults per stage; check the units in the paper before using them).
-source: ""            # e.g. "Haddaway & Westgate 2019, Table 2"
-reviewers: 2
-minutes_per_item:
-  title_abstract: null
-  full_text: null
-  extraction: null
-  risk_of_bias: null
-fixed_hours:          # protocol, search design, synthesis, writing (null = not counted)
-  protocol: null
-  search: null
-  synthesis_and_writing: null
+# Source actually read (2026-11-10): PredicTER R package, Haddaway NR & Westgate MJ,
+# https://github.com/nealhaddaway/predicter (function defaults in R/*.time.R; its README:
+# "Default values are provided based on an empirical study by Neal R Haddaway and
+# Martin J Westgate (2018)" = Conserv Biol 2019;33(2):434-443, doi 10.1111/cobi.13231,
+# a survey of 33 experienced reviewers). The paper itself is not open access and was
+# not read; the rates and their units are those of the package.
+#
+# Mapping (ours): PredicTER screens titles (854/day, all records) then abstracts
+# (192/day, titles kept). The pipeline reads title and abstract of every screened
+# record in one pass and has no "titles kept" count, so title_abstract uses the
+# abstract rate for every screened record (same work as the pipeline: an upper side;
+# titles only at 854/day would be the lower side, given in the report).
+# risk_of_bias = PredicTER critical appraisal (ca.day).
+source: "PredicTER R package defaults (Haddaway & Westgate 2019), github.com/nealhaddaway/predicter, read 2026-11-10"
+items_per_day:
+  title_abstract: 192   # abscreen.time: abstracts.day = 192
+  full_text: 44         # ftscreen.time: ft.day = 44
+  extraction: 6.9       # dataextr.time: dextraction.day = 6.9
+  risk_of_bias: 11.7    # ca.time: ca.day = 11.7
+checked_percent:        # PredicTER defaults: share double-checked by a second reviewer
+  title_abstract: 10    # abstracts.checked
+  full_text: 10         # ft.checked
+  extraction: 0         # dextraction.checked
+  risk_of_bias: 0       # ca.checked
 
 # Shown next to the run time as context (whole review, not per task):
 benchmark: "Haddaway & Westgate 2019: an average environmental systematic review takes about 164 full-time-equivalent days (66 CEE reviews, 2012-2017)."

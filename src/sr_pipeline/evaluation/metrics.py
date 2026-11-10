@@ -178,25 +178,23 @@ def coordinator(ctx: dict) -> dict | None:
 # --- time savings ---------------------------------------------------------------------
 
 def manual_estimate(manual: dict | None, counts: dict) -> dict | None:
-    """Minutes a manual team would need, from per-item minutes in manual_effort.yaml
-    times this run's counts. None when any needed rate is missing (never guessed)."""
+    """Person-days a manual team would need for the per-item stages, from the rates in
+    manual_effort.yaml (items per day + percent double-checked, PredicTER formula:
+    days = items / rate x (1 + checked / 100)) times this run's counts. Kept in days:
+    the source gives no day length, so no conversion to hours. None when any rate is
+    missing (never guessed)."""
     if not manual:
         return None
-    rates = manual.get("minutes_per_item") or {}
-    reviewers = manual.get("reviewers") or 1
+    rates = manual.get("items_per_day") or {}
+    checked = manual.get("checked_percent") or {}
     needed = {"title_abstract": counts["screened"], "full_text": counts["full_text"],
               "extraction": counts["included"], "risk_of_bias": counts["included"]}
-    if any(rates.get(k) is None for k in needed):
+    if any(not rates.get(k) for k in needed):
         return None
-    per_task = {k: round(rates[k] * n * (reviewers if k in ("title_abstract", "full_text")
-                                         else 1), 1) for k, n in needed.items()}
-    fixed = manual.get("fixed_hours") or {}
-    if any(v is None for v in fixed.values()):
-        return None
-    total_h = sum(per_task.values()) / 60 + sum(fixed.values())
-    return {"minutes_per_task": per_task, "fixed_hours": fixed,
-            "reviewers": reviewers, "hours": round(total_h, 1),
-            "source": manual.get("source")}
+    days = {k: round(n / rates[k] * (1 + (checked.get(k) or 0) / 100), 2)
+            for k, n in needed.items()}
+    return {"days_per_task": days, "person_days": round(sum(days.values()), 1),
+            "counts": needed, "source": manual.get("source")}
 
 
 @metric("time_cost", "time")
@@ -221,8 +219,6 @@ def time_cost(ctx: dict) -> dict | None:
     manual = manual_estimate(ctx.get("manual"), counts)
     if manual:
         out["manual"] = manual
-        out["time_saved_share"] = round(1 - out["hours"] / manual["hours"], 3) \
-            if manual["hours"] else None
     elif ctx.get("manual"):
         out["manual"] = "manual_effort.yaml has empty rates: no manual estimate computed"
     if ctx.get("manual") and ctx["manual"].get("benchmark"):
