@@ -57,7 +57,77 @@
       "loops_used": 0
     }
   },
-  "accuracy": {},
+  "accuracy": {
+    "stage_checks": {
+      "ta": {
+        "name": "Title/abstract screening",
+        "unit": "record screened at title/abstract (final decision, latest round)",
+        "result": "decisions judged correct",
+        "seed": 10,
+        "population": 100,
+        "sampled": 10,
+        "marked": 10,
+        "unmarked": 0,
+        "correct": 10,
+        "wrong": 0,
+        "unsure": 0,
+        "judged": 10,
+        "share_correct": 1.0,
+        "ci95": [
+          0.7225,
+          1.0
+        ],
+        "wrong_items": []
+      },
+      "ft": {
+        "name": "Full-text screening",
+        "unit": "record screened at full text (final decision, latest round)",
+        "result": "decisions judged correct",
+        "seed": 10,
+        "population": 70,
+        "sampled": 10,
+        "marked": 10,
+        "unmarked": 0,
+        "correct": 9,
+        "wrong": 1,
+        "unsure": 0,
+        "judged": 10,
+        "share_correct": 0.9,
+        "ci95": [
+          0.5958,
+          0.9821
+        ],
+        "wrong_items": [
+          {
+            "item_id": "doi:10.1088/1361-6579/acfa61",
+            "title": "Atrial fibrillation detection with signal decomposition and dilated residual neural network.",
+            "decision": "include",
+            "note": ""
+          }
+        ]
+      },
+      "extraction": {
+        "name": "Extraction",
+        "unit": "reported field of one study (value + quote)",
+        "result": "values judged correct",
+        "seed": 10,
+        "population": 426,
+        "sampled": 10,
+        "marked": 10,
+        "unmarked": 0,
+        "correct": 10,
+        "wrong": 0,
+        "unsure": 0,
+        "judged": 10,
+        "share_correct": 1.0,
+        "ci95": [
+          0.7225,
+          1.0
+        ],
+        "wrong_items": []
+      }
+    }
+  },
   "consistency": {
     "screener_agreement": {
       "ta": {
