@@ -1043,14 +1043,20 @@ def page_check() -> None:
         st.info("No run with a state.json found.")
         return
     ids = [r.run_id for r in runs]
-    current = st.session_state.get("run_id")
+    # The run and stage live in the URL too, so a browser reload keeps them.
+    qp = st.query_params
+    current = st.session_state.get("run_id") or qp.get("run")
     if current not in ids:
         current = next((r.run_id for r in runs if r.finished), ids[0])
     pick = st.sidebar.selectbox("Run", ids, index=ids.index(current), key="check_run",
                                 format_func=lambda i: f"{i} · {next(r.topic or '–' for r in runs if r.run_id == i)}")
     st.session_state["run_id"] = pick
-    stage = st.sidebar.radio("Stage", list(SC.STAGES), format_func=lambda s: SC.STAGES[s]["name"],
+    stages = list(SC.STAGES)
+    if "check_stage" not in st.session_state and qp.get("stage") in stages:
+        st.session_state["check_stage"] = qp.get("stage")
+    stage = st.sidebar.radio("Stage", stages, format_func=lambda s: SC.STAGES[s]["name"],
                              key="check_stage")
+    qp["run"], qp["stage"] = pick, stage
     info = next(r for r in runs if r.run_id == pick)
     mtime = _mtime(info.path / "state.json") + _mtime(info.path / "audit.jsonl")
     spec = SC.STAGES[stage]
