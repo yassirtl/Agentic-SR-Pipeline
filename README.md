@@ -89,7 +89,7 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 | Criterion | Metrics |
 |---|---|
 | Completeness | gold studies kept at each stage (coverage, search, screening limit, title/abstract, full text) with the reason each one was lost; recall vs all gold and vs gold present in our databases; extraction fields reported with a verified quote (T2/T3: only the topic's own engineering fields; all fields shown apart); PRISMA arithmetic checks; critic outcome |
-| Accuracy | gold share of our includes (a lower bound on precision); title/abstract screening vs a human-labelled sample when one is filled in (accuracy, sensitivity, specificity, kappa, disagreements) |
+| Accuracy | gold share of our includes (a lower bound on precision); title/abstract screening vs a human-labelled sample when one is filled in (accuracy, sensitivity, specificity, kappa, disagreements); per-stage human check when one exists (share judged correct, Wilson 95% interval) |
 | Inter-agent consistency | kappa and agreement of screener A vs B per stage, share adjudicated; coordinator decisions and guardrail refusals |
 | Time savings | run time, LLM calls, cost; next to a manual estimate in person-days from the sourced rates in `evaluation/manual_effort.yaml` (PredicTER defaults) |
 
@@ -128,7 +128,7 @@ Full analysis, figures and limitations: [docs/report/report.pdf](docs/report/rep
 - **What raised recall.** Search fixes: gold found 9 → 13 (T1), 8 → 17 (T3). Screening every record instead of the top 100: +16.7 points on both topics. D fix: no gold study lost on the design criterion (T1 2 → 0, T3 5 → 0), +5.6 and +13.3 points.
 - **What it cost.** Precision fell to about 5%: about 90% of the final includes were judged on the abstract only (no open-access full text), where the rules never exclude for missing information. Title/abstract screener agreement is near 0 (T3 in every version; T1 after the D fix, 0.42 → 0.07), so the adjudicator decides most records.
 - **What is still lost.** Mostly the query (T1 5, T3 13 gold studies never returned, though all are in OpenAlex); one full-text judgement per topic. Screening kept 28 of the 30 gold studies it saw.
-- **Accuracy against human labels: not measured** (labelling skipped, 2026-11-10); T2's accuracy is unknown.
+- **Accuracy on T2 (per-stage human check, not blind: judged by the author, who saw the pipeline's answer).** Samples of 10, seed 10, run `20261108-181125-158ae4`: title/abstract 10/10 correct (95% Wilson 72-100%), full text 9/10 (60-98%), extraction 10/10 reported values (72-100%). Small samples; the full-text sample drew includes only; search, risk of bias and synthesis not checked (report §4.5). The blind labelled samples were not done (decision of 2026-11-10).
 - **Time.** For the same workload (screening, extraction, risk of bias), the PredicTER default rates (Haddaway & Westgate 2019; `evaluation/manual_effort.yaml`) give 69 (T1) and 80 (T3) person-days; the pipeline took under half an hour. Most of those days are extraction of includes a human would have excluded first (report §4.6).
 
 ## Layout
@@ -140,7 +140,7 @@ src/sr_pipeline/   state, guardrail, coordinator, llm (cache + cost), graph, cli
   rag/             chunking, embeddings, FAISS + BM25 hybrid index, LLM re-ranker
   reporting/       PRISMA diagram, manuscript (Markdown + DOCX), tables, run summary
   evaluation/      gold lists + coverage, topics, recall funnel, labels, metrics, CLI
-  ui/              Streamlit run viewer + cost estimator (data.py logic, pages.py, app.py)
+  ui/              Streamlit app: run viewer, cost estimator, live run + budget cap, human check (data.py, live.py, pages.py, app.py)
 protocols/template.yaml   evaluation/   tests/   docs/PLAN.md
 ```
 
