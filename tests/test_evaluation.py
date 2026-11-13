@@ -287,3 +287,20 @@ def test_extraction_completeness_counts_topic_fields_only():
     assert (e["reported"], e["fields"], e["share_reported"]) == (1, 2, 0.5)
     assert e["by_text"]["full text"] == {"reported": 0, "fields": 1, "share": 0.0}
     assert e["all_fields"] == {"reported": 3, "fields": 4, "share": 0.75}
+
+
+def test_render_keeps_stage_checks_with_topic_extraction_fields():
+    """Regression (2026-11-13): the topic-fields extraction line reused the name of the
+    accuracy dict, so the per-stage human check vanished from evaluation.md."""
+    from pathlib import Path
+    from sr_pipeline.evaluation.__main__ import render
+    ext = {"scope": "topic fields", "reported": 1, "fields": 2, "topic_fields": ["a"],
+           "share_reported": 0.5, "studies": 1, "by_text": {},
+           "all_fields": {"reported": 1, "fields": 3, "share": 1 / 3}}
+    check = {"name": "Full-text screening", "unit": "record", "sampled": 2, "population": 5,
+             "seed": 10, "correct": 1, "wrong": 1, "unsure": 0, "unmarked": 0,
+             "share_correct": 0.5, "ci95": (0.1, 0.9), "wrong_items": []}
+    results = {"completeness": {"extraction_completeness": ext},
+               "accuracy": {"stage_checks": {"ft": check}}, "consistency": {}, "time": {}}
+    md = render({"run": {"run_id": "r"}, "folder": Path("r"), "topic": None}, results)
+    assert "Per-stage human check" in md and "No human labels yet" not in md

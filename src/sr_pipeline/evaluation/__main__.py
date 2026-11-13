@@ -115,13 +115,13 @@ def render(ctx: dict, results: dict) -> str:
         parts = ", ".join(f"{k} {_pct(v['share'])} of {v['fields']}" for k, v in
                           e["by_text"].items())
         if e.get("scope") == "topic fields":
-            a = e["all_fields"]
+            af = e["all_fields"]
             lines += [f"Extraction: {e['reported']}/{e['fields']} topic fields "
                       f"({len(e['topic_fields'])} per study: the topic's own extraction "
                       f"fields only) reported with a verified quote "
                       f"({_pct(e['share_reported'])}) over {e['studies']} studies; {parts}. "
-                      f"All fields, incl. the generic clinical ones: {a['reported']}/"
-                      f"{a['fields']} ({_pct(a['share'])}).", ""]
+                      f"All fields, incl. the generic clinical ones: {af['reported']}/"
+                      f"{af['fields']} ({_pct(af['share'])}).", ""]
         else:
             lines += [f"Extraction: {e['reported']}/{e['fields']} fields reported with a "
                       f"verified quote ({_pct(e['share_reported'])}) over {e['studies']} "
