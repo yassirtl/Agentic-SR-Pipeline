@@ -16,7 +16,6 @@ import os
 from collections import Counter
 from pathlib import Path
 
-from ..agents.extraction import outcomes
 from ..agents.screening import criteria
 from ..agents.synthesis import DAGGER, I2_LIMIT, MIN_POOL, NOT_INTERPRETABLE
 from ..agents.critic import MAX_LOOPS
