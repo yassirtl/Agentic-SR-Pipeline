@@ -33,6 +33,8 @@ from pathlib import Path
 
 import faiss
 import numpy as np
+import threading
+
 import snowballstemmer
 from rank_bm25 import BM25Okapi
 
@@ -44,13 +46,21 @@ STOPWORDS = set("""a an and are as at be by for from has have in is it its of on
 their there these this to was were what which with without""".split())
 
 
-_STEMMER = snowballstemmer.stemmer("english")
+# A snowball stemmer is not thread-safe (seen in Part 12: parallel extraction threads
+# compressing passages crashed it), so each thread gets its own.
+_LOCAL = threading.local()
+
+
+def _stemmer():
+    if not hasattr(_LOCAL, "stemmer"):
+        _LOCAL.stemmer = snowballstemmer.stemmer("english")
+    return _LOCAL.stemmer
 
 
 def tokenize(text: str) -> list[str]:
     words = [w for w in re.findall(r"[a-z0-9]+(?:-[a-z0-9]+)*", text.lower())
              if w not in STOPWORDS]
-    return _STEMMER.stemWords(words)
+    return _stemmer().stemWords(words)
 
 
 def rrf(rankings: list[list[int]], k: int = RRF_K) -> list[tuple[int, float]]:

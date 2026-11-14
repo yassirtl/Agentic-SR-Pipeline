@@ -86,6 +86,10 @@ class Config(BaseModel):
     screening_workers: int = Field(8, ge=1)
     ft_candidates: int = Field(10, ge=1)
     ft_passages: int = Field(5, ge=1)
+    # Part 12: context compression of the passages the LLM reads (rag/compress.py). Off by
+    # default: screening and extraction were evaluated without it.
+    rag_compress: bool = False
+    rag_compress_sentences: int = Field(3, ge=1)
     ft_rerank: bool = Field(True, description="LLM re-ranking of each criterion's passages "
                             "(most of the full-text cost; off = fused hybrid order).")
 

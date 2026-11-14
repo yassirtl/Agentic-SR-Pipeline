@@ -127,6 +127,7 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, Field
 
 from ..llm import LLM, Usage, is_fatal
+from ..rag.compress import compress_hits
 from ..rag import HybridIndex, chunk_paper, rerank
 from ..sources.fulltext import fetch_fulltexts
 from ..state import ReviewState, latest, stage_round
@@ -978,7 +979,7 @@ def ta_included(state: ReviewState) -> list[dict]:
 
 def make_ft_screening(llm: LLM, http, embedder, *, index_dir: str | Path, workers: int = 8,
                       passages: int = 5, candidates: int = 10, chunk_words: int = 250,
-                      chunk_overlap: int = 40, use_rerank: bool = True,
+                      chunk_overlap: int = 40, use_rerank: bool = True, compress: int = 0,
                       contact_email: str | None = None,
                       env: Mapping[str, str] | None = None, fetch: Callable = fetch_fulltexts):
     """Full-text screening of the title/abstract includes (see module docstring).
@@ -1024,7 +1025,9 @@ def make_ft_screening(llm: LLM, http, embedder, *, index_dir: str | Path, worker
                                           top=candidates)
                         if u is not None:
                             usages.append(u)
-                    by_criterion[cid] = ranked[:passages]
+                    by_criterion[cid] = compress_hits(ranked[:passages],
+                                                      criterion_query(protocol, cid, text),
+                                                      compress)
                 evidence, mode = ft_evidence(paper, by_criterion), "ft"
             else:
                 evidence, mode = ta_evidence(paper), "ft_abstract"

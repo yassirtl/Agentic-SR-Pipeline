@@ -258,6 +258,7 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
         meta = {"run_id": run_id, "question": question, "topic": topic_id, "auto": auto,
                 "screen_limit": cfg.screen_limit if screen_limit is None else screen_limit,
                 "budget_usd": budget_usd, "models": agent_models(cfg),
+                "rag_compress": cfg.rag_compress_sentences if cfg.rag_compress else 0,
                 "started_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 **(meta_extra or {})}
         (run_dir / "run.json").write_text(json.dumps(meta, indent=2))

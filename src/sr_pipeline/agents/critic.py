@@ -36,6 +36,14 @@ objections whose quote was a real line that actually supported the sentence; the
 rule (verified quote = blocker) could not tell. Objections about direction, wording or
 nuance stay warnings and go to the report's QA section.
 
+**Tool calling** (Part 12): the LLM pass is a LangChain tool-calling agent. Its prompt holds
+the sentences, the overview of the evidence and the outcome list, not the whole evidence
+tables; it calls ``lookup_study`` (the evidence lines of one study), ``outcome_summary``
+(method, vote count, pooled result and heterogeneity of one outcome) and ``check_quote``
+(is this text in the evidence tables?) as it needs, then submits its ``Review``. The calls
+are kept in the report (``tool_calls``) and the audit. The rules above are unchanged: code
+still decides what is a blocker.
+
 **Loop-back** (plan: only blockers loop, at most 2 loops): ``loop_back`` is True when there
 are blockers and the synthesis has been re-run fewer than ``max_loops`` times since the
 last extraction. The Coordinator is told; it cannot loop when ``loop_back`` is False (code
@@ -47,7 +55,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from ..llm import LLM, is_fatal
+from ..llm import LLM, Tool, is_fatal
 from ..state import ReviewState, stage_round
 from .extraction import numbers, outcomes
 from .screening import _sum_usage, quote_found
@@ -107,6 +115,95 @@ def critic_prompt(protocol: dict, synthesis: dict) -> str:
 
 
 _LABEL = re.compile(r"\bS\d+\b")
+MAX_TOOL_ROUNDS = 6
+
+
+class StudyArgs(BaseModel):
+    label: str = Field(description="A study label, e.g. S12.")
+
+
+class OutcomeArgs(BaseModel):
+    outcome_id: str = Field(description="An outcome id, e.g. O1.")
+
+
+class QuoteArgs(BaseModel):
+    text: str = Field(description="The exact words to look for in the evidence tables.")
+
+
+def _blocks(evidence: str) -> tuple[list[str], dict[str, list[str]]]:
+    """(overview lines, {outcome id: its lines}) of the synthesis evidence text."""
+    overview, outs, cur = [], {}, None
+    for line in evidence.splitlines():
+        m = re.match(r"Outcome (\w+):", line)
+        if m:
+            cur = m.group(1)
+            outs[cur] = []
+        (outs[cur] if cur else overview).append(line)
+    return overview, outs
+
+
+def critic_tools(syn: dict) -> list[Tool]:
+    """The critic's tools over this synthesis' evidence tables (results are plain text)."""
+    evidence = syn["evidence"]
+    overview, outs = _blocks(evidence)
+
+    def is_study(line: str, label: str) -> bool:
+        return re.match(rf"\s*{re.escape(label)}\b(?!\d)", line) is not None
+
+    def lookup_study(label: str) -> str:
+        label = label.strip().upper()
+        found = [f"overview: {x.strip()}" for x in overview if is_study(x, label)]
+        for oid, lines in outs.items():
+            found += [f"{oid}: {x.strip()}" for x in lines if is_study(x, label)]
+        return "\n".join(found) or f"no evidence line for {label}"
+
+    def outcome_summary(outcome_id: str) -> str:
+        lines = outs.get(outcome_id.strip().upper())
+        if lines is None:
+            return f"no outcome {outcome_id}; outcomes: {', '.join(outs)}"
+        return "\n".join(x for x in lines if x.strip() and not re.match(r"\s*S\d+\b", x))
+
+    def check_quote(text: str) -> str:
+        return ("found in the evidence tables" if quote_found(text, evidence)
+                else "NOT found in the evidence tables")
+
+    return [Tool("lookup_study", "The evidence lines of one study: its row in the overview "
+                 "table and its line under each outcome.", lookup_study, StudyArgs),
+            Tool("outcome_summary", "Method, vote count, pooled result and heterogeneity of "
+                 "one outcome.", outcome_summary, OutcomeArgs),
+            Tool("check_quote", "Whether these exact words appear in the evidence tables.",
+                 check_quote, QuoteArgs)]
+
+
+def critic_prompt_tools(protocol: dict, synthesis: dict) -> str:
+    """Prompt of the tool-calling critic: sentences, overview, outcome list; the study and
+    outcome details come through the tools."""
+    sents = "\n".join(f"{i}. [{s['section']}] {s['text']} (studies: "
+                      f"{', '.join(s['studies']) or 'none'})"
+                      for i, s in enumerate(synthesis["narrative"], 1))
+    overview, outs = _blocks(synthesis["evidence"])
+    head = [x for x in overview if x.strip() and not re.match(r"\s*S\d+\b", x)]
+    outcomes_list = "\n".join(lines[0] for lines in outs.values() if lines)
+    return (
+        "You are the critic of a PRISMA 2020 systematic review. Check each synthesis "
+        "sentence against the evidence tables, which you read through your tools.\n"
+        f"Review question: {protocol.get('question', '')}\n\n"
+        "Tools: lookup_study(label) gives a study's evidence lines; outcome_summary("
+        "outcome_id) gives an outcome's method, vote count and heterogeneity; check_quote("
+        "text) tells whether words are in the tables. Look up what a sentence relies on "
+        "before you object; you may call several tools at once. Then submit a Review.\n\n"
+        "List a sentence only if it claims something the tables do not support, e.g.: a "
+        "result in the wrong direction; an effect called significant or effective from "
+        "individual p values or from vote counting without a significant sign test; a "
+        "pooled result when no meta-analysis was done; a study described with the wrong "
+        "result or risk of bias; a number not in the tables. For a contradiction, copy in "
+        "'evidence' the exact words of a line a tool returned. If the sentence gets a number "
+        "or a count wrong, give the sentence's number in 'wrong_value' and the table's "
+        "number in 'table_value'. A line that agrees with the sentence is not a "
+        "contradiction. Do not list style issues. An empty list is a correct answer.\n\n"
+        f"Sentences:\n{sents or '(none)'}\n\nOverview of the evidence:\n"
+        + "\n".join(head) + f"\n\nOutcomes:\n{outcomes_list or '(none)'}"
+    )
 
 
 def _nums(text: str) -> list[float]:
@@ -256,11 +353,12 @@ def make_critic(llm: LLM, *, max_loops: int = MAX_LOOPS):
         completed = state.get("completed_stages", [])
         rnd = stage_round("critic", completed)
         issues = code_checks(state)
-        usage = []
+        usage, trace = [], []
         if syn["narrative"]:
             try:
-                ans, u = llm.call_with_usage(Review, critic_prompt(protocol, syn),
-                                             agent="critic")
+                ans, u, trace = llm.call_with_tools(
+                    Review, critic_prompt_tools(protocol, syn), critic_tools(syn),
+                    agent="critic", max_rounds=MAX_TOOL_ROUNDS)
                 usage.append(u)
                 for it in ans.issues:
                     if not 1 <= it.sentence <= len(syn["narrative"]):
@@ -292,6 +390,7 @@ def make_critic(llm: LLM, *, max_loops: int = MAX_LOOPS):
             "blockers": len(blockers), "warnings": len(issues) - len(blockers),
             "issues": issues, "loops_used": used, "max_loops": max_loops,
             "loop_back": bool(blockers) and used < max_loops,
+            "tool_calls": trace,
         }
         if blockers and not report["loop_back"]:
             report["note"] = (f"loop budget spent ({used}/{max_loops}): the remaining "
@@ -305,6 +404,8 @@ def make_critic(llm: LLM, *, max_loops: int = MAX_LOOPS):
                            "blockers": report["blockers"], "warnings": report["warnings"],
                            "kinds": sorted({i["kind"] for i in issues}),
                            "loop_back": report["loop_back"], "loops_used": used,
+                           "tool_calls": len(trace),
+                           "tools_used": sorted({t["tool"] for t in trace}),
                            **_sum_usage(usage)}],
         }
 

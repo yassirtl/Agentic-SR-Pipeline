@@ -90,6 +90,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from ..llm import LLM, Usage, is_fatal
+from ..rag.compress import compress_hits
 from ..rag import HybridIndex, chunk_paper, rerank
 from ..rag.index import tokenize
 from ..state import ReviewState, latest, stage_round
@@ -886,7 +887,7 @@ def included_papers(state: ReviewState) -> list[dict]:
 
 def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int = 8,
                     passages: int = 5, candidates: int = 10, use_rerank: bool = True,
-                    table_passages: int = 3, diagnostic_tables: int = 8):
+                    table_passages: int = 3, diagnostic_tables: int = 8, compress: int = 0):
     """Extraction + risk-of-bias stage over ``included`` (see module docstring).
     ``candidates`` / ``passages`` / ``use_rerank`` share the full-text screening settings
     (``ft_candidates``, ``ft_passages``, ``ft_rerank``). Each outcome query also gets the
@@ -909,7 +910,7 @@ def make_extraction(llm: LLM, embedder, *, index_dir: str | Path, workers: int =
                 hs, u = rerank(llm, queries[g], hs, top=candidates)
                 if u is not None:
                     usages.append(u)
-            out[g] = hs[:passages]
+            out[g] = compress_hits(hs[:passages], queries[g], compress)
         return out, usages
 
     def extraction(state: ReviewState) -> dict:

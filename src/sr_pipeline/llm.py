@@ -110,8 +110,31 @@ def api_error_message(exc: BaseException) -> str | None:
     return f"OpenAI API error: {type(exc).__name__}: {str(exc)[:200]}"
 
 
+@dataclass
+class Tool:
+    """A tool the LLM may call (Part 12, tool calling): ``func(**args) -> str``, its
+    arguments described by the pydantic model ``args``."""
+    name: str
+    description: str
+    func: Callable[..., str]
+    args: type[BaseModel]
+
+
+def _run_tool(tools: dict[str, "Tool"], name: str, args: dict) -> str:
+    t = tools.get(name)
+    if t is None:
+        return f"error: unknown tool {name!r}"
+    try:
+        return str(t.func(**t.args.model_validate(args).model_dump()))
+    except Exception as exc:                          # the LLM sees the error and goes on
+        return f"error: {type(exc).__name__}: {exc}"[:300]
+
+
 class LLM(Protocol):
     def call_with_usage(self, schema: type[T], prompt: str, *, agent: str) -> tuple[T, Usage]: ...
+
+    def call_with_tools(self, schema: type[T], prompt: str, tools: list[Tool], *, agent: str,
+                        max_rounds: int = 5) -> tuple[T, Usage, list[dict]]: ...
 
     def structured_call(self, schema: type[T], prompt: str, *, agent: str) -> T: ...
 
@@ -142,6 +165,10 @@ def _default_chat_factory(model: str, max_tokens: int = DEFAULT_MAX_TOKENS):
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(model=model, temperature=0, max_tokens=max_tokens)
+
+
+TOOL_RESULT_CHARS = 4000     # what one tool result may add to the conversation
+MAX_TOOL_CALLS = 60          # past this, a tool call gets "limit reached" and the answer is due
 
 
 class OpenAILLM(_Base):
@@ -204,6 +231,63 @@ class OpenAILLM(_Base):
         tmp.replace(path)
         return parsed, usage
 
+    def call_with_tools(self, schema: type[T], prompt: str, tools: list[Tool], *, agent: str,
+                        max_rounds: int = 5, max_calls: int = MAX_TOOL_CALLS
+                        ) -> tuple[T, Usage, list[dict]]:
+        """LangChain tool calling: the model gets ``tools`` plus the final answer
+        (``schema``, offered as one more tool) and decides which to call, round after round,
+        until it calls the final answer; the last round may only give the answer. Returns
+        (answer, summed usage, trace of the tool calls). The whole exchange is cached on
+        (model, schema, prompt, tool names), like a single call."""
+        from langchain_core.messages import HumanMessage, ToolMessage
+        from langchain_core.tools import StructuredTool
+
+        model = self.model_for(agent)
+        key = cache_key(model, schema, prompt + "\n[tools: " + ", ".join(t.name for t in tools)
+                        + "]")
+        path = self.cache_dir / f"{key}.json"
+        if path.exists():
+            data = json.loads(path.read_text())
+            return (schema.model_validate(data["parsed"]),
+                    Usage(model, data["input_tokens"], data["output_tokens"], cost_usd=0.0,
+                          cached=True), data.get("trace", []))
+        by_name = {t.name: t for t in tools}
+        lc_tools = [StructuredTool.from_function(func=t.func, name=t.name,
+                                                 description=t.description, args_schema=t.args)
+                    for t in tools]
+        client = self._client(model, max_tokens_for(agent))
+        messages, trace, tin, tout, parsed = [HumanMessage(prompt)], [], 0, 0, None
+        for rnd in range(1, max_rounds + 1):
+            spent = len(trace) >= max_calls
+            choice = schema.__name__ if rnd == max_rounds or spent else "any"
+            ai = client.bind_tools([*lc_tools, schema], tool_choice=choice).invoke(messages)
+            meta = getattr(ai, "usage_metadata", None) or {}
+            tin, tout = tin + meta.get("input_tokens", 0), tout + meta.get("output_tokens", 0)
+            messages.append(ai)
+            final = next((c for c in ai.tool_calls if c["name"] == schema.__name__), None)
+            if final is not None:
+                parsed = schema.model_validate(final["args"])
+                break
+            for c in ai.tool_calls:
+                result = (_run_tool(by_name, c["name"], c.get("args") or {})
+                          if len(trace) < max_calls else
+                          f"limit of {max_calls} tool calls reached: submit your answer now")
+                trace.append({"round": rnd, "tool": c["name"], "args": c.get("args") or {},
+                              "result": result[:300]})
+                messages.append(ToolMessage(content=result[:TOOL_RESULT_CHARS],
+                                            tool_call_id=c["id"]))
+        if parsed is None:
+            raise ValueError(f"tool calling: no {schema.__name__} after {max_rounds} rounds")
+        usage = Usage(model, tin, tout, cost_usd=compute_cost(model, tin, tout))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+        tmp.write_text(json.dumps({"model": model, "schema": schema.__name__,
+                                   "parsed": parsed.model_dump(mode="json"), "trace": trace,
+                                   "input_tokens": tin, "output_tokens": tout}, indent=2,
+                                  default=str))
+        tmp.replace(path)
+        return parsed, usage, trace
+
 
 class ScriptedLLM(_Base):
     """Test double: returns pre-written answers in order, one queue per agent.
@@ -235,3 +319,29 @@ class ScriptedLLM(_Base):
             raise answer
         parsed = answer if isinstance(answer, schema) else schema.model_validate(answer)
         return parsed, Usage("scripted")
+
+    def call_with_tools(self, schema: type[T], prompt: str, tools: list[Tool], *, agent: str,
+                        max_rounds: int = 5) -> tuple[T, Usage, list[dict]]:
+        """A scripted answer may be ``{"tool_calls": [{"name", "args"}...], "answer": {...}}``:
+        the tool calls are really run (so a test sees the tools work), then the answer is
+        returned. A plain answer means no tool call."""
+        with self._lock:
+            self.calls.append((agent, prompt))
+            queue = self.script.get(agent)
+            if callable(queue):
+                answer = queue(prompt)
+            elif not queue:
+                raise RuntimeError(f"ScriptedLLM: no scripted answer left for agent '{agent}'")
+            else:
+                answer = queue.pop(0)
+        if isinstance(answer, BaseException):
+            raise answer
+        trace = []
+        if isinstance(answer, dict) and "answer" in answer and "tool_calls" in answer:
+            by_name = {t.name: t for t in tools}
+            for c in answer["tool_calls"]:
+                trace.append({"round": 1, "tool": c["name"], "args": c.get("args") or {},
+                              "result": _run_tool(by_name, c["name"], c.get("args") or {})[:300]})
+            answer = answer["answer"]
+        parsed = answer if isinstance(answer, schema) else schema.model_validate(answer)
+        return parsed, Usage("scripted"), trace
