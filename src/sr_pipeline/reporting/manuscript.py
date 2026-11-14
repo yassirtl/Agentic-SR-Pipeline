@@ -360,6 +360,19 @@ def _results(state: dict, base: Path, prisma_png: Path | None, fx: dict | None =
         out += ["", md_table(rows, cols)]
     if fx.get("sof"):
         out += ["", "### Summary of findings", ""] + [f"- {x}" for x in fx["sof"]]
+    if fx.get("gaps"):
+        from .findings import check_text
+        out += ["", "### Evidence gaps", "",
+                "Found by code in the included studies: combinations of model and device "
+                "never seen together, groups with one or two studies, items rarely measured "
+                "or rarely done well, and dependence on one dataset. A combination or group "
+                "gap was checked by a hit count in OpenAlex (title and abstract, the review's "
+                "years); a large count means the gap may be one of this sample only.", "",
+                md_table([{"id": g["id"], "s": g["statement"], "e": g["evidence"],
+                           "c": check_text(g), "cl": ", ".join(g["closest"]) or "–"}
+                          for g in fx["gaps"]],
+                         [("id", "Gap"), ("s", "What is missing"), ("e", "Evidence"),
+                          ("c", "Check"), ("cl", "Closest studies")])]
 
     by_study: dict[str, list[str]] = {}
     per_domain: dict[str, Counter] = {}
@@ -593,6 +606,16 @@ def facts_sheet(state: dict, fx: dict | None = None) -> tuple[str, dict]:
         lines.append(f"Prior systematic reviews on this question: {prior}.")
     if fx.get("sof"):
         lines += ["Summary of findings:"] + [f"- {x}" for x in fx["sof"]]
+    gaps = fx.get("gaps") or []
+    if gaps:
+        from .findings import check_text
+        lines.append("Evidence gaps (found by code; 'propose' = write a proposal for it):")
+        for g in gaps:
+            g["propose"] = not (g.get("check_result") or {}).get("confirmed") is False
+            lines.append(f"- {g['id']} [{'propose' if g['propose'] else 'not confirmed'}] "
+                         f"{g['statement']}. Evidence: {g['evidence']}. Check: "
+                         f"{check_text(g)}. Closest included studies: "
+                         f"{', '.join(g['closest']) or 'none'}.")
     else:
         for g in syn.get("outcomes", []):
             vc = ", ".join(f"{k} {v}" for k, v in g["vote_count"].items()
@@ -605,6 +628,7 @@ def facts_sheet(state: dict, fx: dict | None = None) -> tuple[str, dict]:
                                                       levels.most_common()) + ".")
     lines += ["Limitations of this review:"] + [x for x in _limitations(state)[2:] if x]
     d = {"identified": n["identified"], "screened": n["screened"], "included": n["included"],
+         "gaps": gaps,
          "headline": next((x for x in fx.get("sof") or [] if "accuracy" in x.lower()), "")}
     return "\n".join(lines), d
 
@@ -669,6 +693,12 @@ def manuscript(state: dict, *, base: Path, models: dict[str, str], summary: dict
               *_results(state, base, prisma_png, fx), ""]
     parts += ["## Discussion", "", *(_paras(disc) + [""] if disc else []),
               *_limitations(state), ""]
+    agenda = sec.get("research_agenda") or []
+    if agenda:
+        parts += ["## Research agenda: proposed approaches", "",
+                  "*Proposals for future studies, one per evidence gap that holds after the "
+                  "check; they follow from the gaps above and are not results of this review.*",
+                  "", *_paras(agenda), ""]
     if concl:
         parts += ["## Conclusions", "", concl, ""]
     parts += [*_other_information(), "", *_references(state), "",

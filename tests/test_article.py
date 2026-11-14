@@ -130,3 +130,53 @@ def test_writer_without_llm_or_on_error_uses_the_code_text():
     bad = W.write(ScriptedLLM({"writer": [RuntimeError("down")]}), {"question": "Q?"},
                   FACTS, {}, [])
     assert bad["error"].startswith("RuntimeError") and set(bad["source"].values()) == {"code"}
+
+
+# --- Part 11h: evidence gaps ----------------------------------------------------------------
+
+def big_state():
+    """12 studies: CNN (6) and spiking (6) x microcontroller (6) and FPGA (6), but spiking
+    never on FPGA: a combination gap. Latency never reported: a reporting gap."""
+    st = state()
+    combos = [("CNN", "microcontroller")] * 3 + [("CNN", "FPGA")] * 3 + \
+             [("spiking", "microcontroller")] * 6
+    syn, ext, inc, rec = [], [], [], []
+    for i, (m, d) in enumerate(combos, 1):
+        lab, pid = f"S{i}", f"p{i}"
+        syn.append({"label": lab, "paper_id": pid, "author": "A", "year": 2024,
+                    "title": f"t{i}", "abstract_only": False, "rob_overall": "unclear"})
+        ext.append({"paper_id": pid, "round": 1, "fields": {
+            "model": _f(m), "platform": _f(d), "dataset": _f("MIT-BIH"), "latency": _f(None)}})
+        inc.append(pid)
+        rec.append({"paper_id": pid, "title": f"t{i}"})
+    st.update({"synthesis": {"studies": syn}, "extractions": ext, "included": inc,
+               "unique_records": rec})
+    st["protocol"]["evidence_map"] = {**SPEC, "check": {"base": ["ECG"], "few": 25}}
+    return st
+
+
+def test_gaps_find_combination_reporting_and_dataset_then_check():
+    st = big_state()
+    sp = st["protocol"]["evidence_map"]
+    em = F.evidence_map(st, sp)
+    gs = F.gaps(st, sp, em, F.summary(st, sp, em))
+    kinds = {g["kind"]: g for g in gs}
+    assert kinds["combination"]["statement"] == "Spiking on FPGA: no included study"
+    assert kinds["combination"]["check"][0] == ["ECG"]
+    assert "latency 0 of 12" in kinds["reporting"]["evidence"]
+    assert kinds["dataset"]["evidence"] == "12 of 12 studies that name a dataset"
+    assert [g["id"] for g in gs] == [f"G{i}" for i in range(1, len(gs) + 1)]
+    F.check_gaps(gs, lambda blocks, years: 3, years=None, few=25)
+    assert kinds["combination"]["check_result"] == {"hits": 3, "few": 25, "confirmed": True}
+    assert F.check_text(kinds["combination"]) == "confirmed: 3 records in OpenAlex"
+    assert F.check_text(kinds["reporting"]) == "judged on the included studies"
+    F.check_gaps(gs, lambda blocks, years: 400, years=None)
+    assert "not confirmed: 400" in F.check_text(kinds["combination"])
+
+
+def test_agenda_code_text_only_for_gaps_to_propose():
+    gaps = [{"id": "G1", "statement": "A", "closest": ["S1"], "propose": True},
+            {"id": "G2", "statement": "B", "closest": [], "propose": False}]
+    out = W.write(None, {"question": "Q?"}, FACTS, {"included": 4, "gaps": gaps}, ["S1"])
+    agenda = out["sections"]["research_agenda"]
+    assert len(agenda) == 1 and agenda[0].startswith("G1. A") and "S1" in agenda[0]

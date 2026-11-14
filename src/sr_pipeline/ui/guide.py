@@ -594,6 +594,13 @@ def results_screen(run_dir: Path, r: dict, *, demo: bool) -> None:
     if fnd:
         st.markdown("#### What the studies show")
         st.markdown("\n".join(f"- {x}" for x in fnd.get("summary") or []))
+        if fnd.get("gaps"):
+            from sr_pipeline.reporting.findings import check_text
+            st.markdown("#### Gaps found")
+            st.markdown("\n".join(f"- **{x['id']}** {x['statement']} ({x['evidence']}; "
+                                   f"{check_text(x)})" for x in fnd["gaps"]))
+            st.caption("The article proposes a study for each gap that holds after the check "
+                       "(section Research agenda).")
         png = run_dir / "report" / "evidence_map.png"
         if png.exists():
             with st.expander("See the evidence map (model family × device)"):

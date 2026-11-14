@@ -23,7 +23,7 @@ from ..agents.synthesis import number_supported
 
 AGENT = "writer"
 SECTIONS = ("abstract_background", "abstract_results", "abstract_conclusion",
-            "introduction", "discussion", "conclusion")
+            "introduction", "discussion", "conclusion", "research_agenda")
 _LABEL = re.compile(r"\bS\d+\b")
 _NUM = re.compile(r"\d+(?:\.\d+)?")
 _OUTSIDE = re.compile(r"\bet al\b|\[\d+(?:[,–-]\s*\d+)*\]|https?://|www\.|\bdoi\b", re.I)
@@ -42,6 +42,12 @@ class Prose(BaseModel):
                                               "the evidence and of this review; implications "
                                               "for research.")
     conclusion: str = Field(description="One paragraph, two or three sentences.")
+    research_agenda: list[str] = Field(default_factory=list, description=(
+        "One short paragraph per evidence gap marked 'propose' in the facts, in the "
+        "facts' order, starting with its id (e.g. 'G1.'): the gap in one phrase, then a "
+        "concrete study that would close it (what to build or measure, on what data and "
+        "device, reported how), citing the closest included studies by label. A "
+        "proposal, not a result: no expected numbers."))
 
 
 RULES = """Rules (checked by code; a section that breaks one is replaced):
@@ -59,6 +65,9 @@ RULES = """Rules (checked by code; a section that breaks one is replaced):
   train/test splits and class sets. Say so where it matters.
 - Be cautious and specific: if the facts show that most studies were judged on the
   abstract only, or that risk of bias is mostly unclear, say what this means.
+- Frame the review around its evidence gaps: name the main gap in abstract_results and
+  the proposed direction in abstract_conclusion. A gap marked "not confirmed" may be a
+  gap of this sample only: do not present it as a gap in the field.
 - Plain academic English, no bullet points, no headings inside the paragraphs.
 """
 
@@ -115,6 +124,11 @@ def code_text(protocol: dict, facts_d: dict) -> dict[str, str | list[str]]:
         "conclusion": "This draft maps the studies that answer the question; a reviewer "
                       "should check the included studies and the extracted values before "
                       "drawing conclusions.",
+        "research_agenda": [f"{g['id']}. {g['statement']}: a study designed to close this "
+                            "gap, reported with the items listed in the Methods, is needed"
+                            + (f" (closest included studies: {', '.join(g['closest'][:4])})."
+                               if g.get("closest") else ".")
+                            for g in facts_d.get("gaps") or [] if g.get("propose")],
     }
 
 
@@ -137,6 +151,8 @@ def write(llm, protocol: dict, facts: str, facts_d: dict, labels: list[str]) -> 
         value = getattr(ans, name)
         paras = value if isinstance(value, list) else [value]
         paras = [p.strip() for p in paras if p and p.strip()]
+        if name == "research_agenda" and not (facts_d.get("gaps") or []):
+            continue                                   # nothing to propose: code text ([])
         flags = [f for p in paras for f in check(p, facts, labels, n)] if paras else ["empty"]
         if flags:
             out["flags"][name] = flags

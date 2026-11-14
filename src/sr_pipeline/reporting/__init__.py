@@ -27,7 +27,7 @@ from .word import markdown_to_docx
 __all__ = ["make_report", "flow_counts", "run_summary", "collect_findings"]
 
 
-def collect_findings(state: dict, out_dir: Path) -> dict:
+def collect_findings(state: dict, out_dir: Path, counter=None) -> dict:
     """Study table, evidence map (+ figure) and summary of findings, for topics that have
     their own extraction fields; {} otherwise (the article keeps its PICO table)."""
     p = state.get("protocol") or {}
@@ -44,14 +44,22 @@ def collect_findings(state: dict, out_dir: Path) -> dict:
     if sm:
         fx["sof"] = F.summary_lines(sm, p)
         fx["sof_counts"] = sm
+    gs = F.gaps(state, sp, em, sm)
+    if gs:
+        F.check_gaps(gs, counter, years=p.get("years"),
+                     few=int(((sp or {}).get("check") or {}).get("few") or 25))
+        fx["gaps"] = gs
     return fx
 
 
 def make_report(out_dir: str | Path, *, models: dict[str, str] | None = None,
-                embedder=None, previous_summary: dict | None = None, llm=None):
+                embedder=None, previous_summary: dict | None = None, llm=None,
+                counter=None):
     """``models``: agent -> model, for the Methods. ``embedder``: the run's embedder, whose
     cumulative ``usage()`` goes into the run summary (embeddings are not in the audit).
     ``llm``: for the writer (one call); None = the framing sections are written by code.
+    ``counter``: OpenAlex hit counter for the gap check (``findings.openalex_counter``);
+    None = gaps stay unchecked (said in the article).
     ``previous_summary`` (Part 9b, ``--report-only``): the run summary of the original
     report; its finish time and embedding cost are kept, so a re-render changes no fact."""
     out_dir = Path(out_dir)
@@ -77,12 +85,13 @@ def make_report(out_dir: str | Path, *, models: dict[str, str] | None = None,
         # The writer runs before the summary: in a live run its one call is part of the
         # run (same audit entry as below), so the summary written now and any later
         # re-render agree. A re-render's own writer call stays out (writer.json only).
-        fx = collect_findings(state, out_dir)
+        fx = collect_findings(state, out_dir, counter)
         if fx.get("map_png"):
             files["evidence_map.png"] = str(fx["map_png"])
         if fx.get("sof"):     # for the app's results screen (same content as the article)
             (out_dir / "findings.json").write_text(json.dumps(
-                {"summary": fx["sof"], "evidence_map": fx.get("em")}, indent=2, default=str))
+                {"summary": fx["sof"], "evidence_map": fx.get("em"),
+                 "gaps": fx.get("gaps") or []}, indent=2, default=str))
             files["findings.json"] = str(out_dir / "findings.json")
         facts, facts_d = facts_sheet(state, fx)
         labels = [s["label"] for s in (state.get("synthesis") or {}).get("studies", [])]

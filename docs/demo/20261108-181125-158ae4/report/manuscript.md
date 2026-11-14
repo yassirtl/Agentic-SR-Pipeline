@@ -4,19 +4,19 @@
 
 ## Abstract
 
-**Background.** The detection of abnormal versus normal ECG using lightweight machine-learning models on resource-constrained devices is crucial for advancing portable health monitoring technologies. This review aims to systematically evaluate the available studies on this topic to determine the models' accuracy and efficiency.
+**Background.** The detection of abnormal versus normal ECG using lightweight machine-learning models on resource-constrained devices is crucial for advancing portable health monitoring technologies. This review aims to systematically evaluate the available evidence on model performance and efficiency in this context.
 
 **Methods.** We searched OpenAlex, PubMed (2021 onward). LLM agents screened titles, abstracts and full texts against pre-specified criteria (two screeners and an adjudicator, every exclusion backed by a verified quote), extracted data with verified quotes and assessed risk of bias with the five-domain instrument of Arredondo-Velazquez 2026 (Table 2); narrative synthesis with an evidence map (no pooling).
 
-**Results.** A total of 55 studies were included, with 39 assessed solely on their abstracts. The accuracy of the models reported ranged from 82% to 99.1%, while efficiency metrics were evaluated in terms of latency, power, memory, and operations across various studies.
+**Results.** A total of 55 studies were included, with 39 assessed solely on their abstracts. The most common model-device combinations were Convolutional networks on wearables and microcontrollers, while accuracy figures ranged from 82% to 99.1%, though these figures are not directly comparable due to differing datasets and methodologies.
 
-**Conclusions.** The findings highlight a significant reliance on abstract assessments, which may limit the comprehensiveness of the review. Further research with full-text evaluations is necessary to enhance the understanding of model performance in this domain.
+**Conclusions.** The review highlights significant gaps in the evaluation protocols and efficiency measurements of lightweight machine-learning models for ECG detection. Future research should focus on addressing these gaps to enhance the reliability and applicability of findings in real-world scenarios.
 
 ## Introduction
 
-The increasing prevalence of cardiovascular diseases necessitates effective monitoring solutions, particularly in resource-constrained environments. Lightweight machine-learning models have emerged as promising tools for detecting abnormal ECG signals on devices such as microcontrollers, wearables, smartphones, and FPGAs, which are essential for real-time health monitoring.
+The ability to detect abnormal ECG signals using lightweight machine-learning models on resource-constrained devices is increasingly important as health monitoring shifts towards portable technologies. These devices, such as microcontrollers, wearables, smartphones, and FPGAs, offer the potential for continuous health monitoring, which can lead to timely medical interventions.
 
-Despite the potential of these models, there is a lack of systematic reviews that comprehensively assess their performance in terms of accuracy and efficiency. This review aims to fill this gap by evaluating the existing literature on lightweight machine-learning models for ECG detection, focusing on their application in resource-constrained devices.
+Despite the growing interest in this area, there is a lack of comprehensive reviews that systematically assess the performance and efficiency of these models. This review aims to fill this gap by evaluating the existing studies on lightweight machine-learning models for ECG detection, focusing on their accuracy and efficiency metrics.
 
 ## Methods
 
@@ -179,6 +179,21 @@ Each of the 55 included studies is counted once, by model family and device. Mod
 - Efficiency measured with a number: latency 8, power / energy 6, memory 8, parameters 8, operations 3 of 55 studies.
 - Risk of bias (overall): unclear 46, high 9.
 
+### Evidence gaps
+
+Found by code in the included studies: combinations of model and device never seen together, groups with one or two studies, items rarely measured or rarely done well, and dependence on one dataset. A combination or group gap was checked by a hit count in OpenAlex (title and abstract, the review's years); a large count means the gap may be one of this sample only.
+
+| Gap | What is missing | Evidence | Check | Closest studies |
+|---|---|---|---|---|
+| G1 | Few studies show they did the key steps well: evaluation protocol stated; subjects separated between training and test; per-class or prevalence-insensitive metric; deployed variant evaluated | D1 low in 10 of 55; D2 low in 9 of 55; D3 low in 13 of 55; D4 low in 4 of 55 (the rest mostly unclear: not reported in the text read; 39 studies were read on the abstract only) | judged on the included studies | S11, S2, S24, S36, S45 |
+| G2 | Efficiency is rarely measured with a number: operations, parameters, memory, clock, latency, power / energy | operations 3 of 55; parameters 8 of 55; memory 8 of 55; clock 2 of 55; latency 8 of 55; power / energy 6 of 55 | judged on the included studies | S11, S20, S23, S24, S38 |
+| G3 | Spiking neural network on Microcontroller: no included study | Spiking neural network: 7 studies; Microcontroller: 7 studies; together: 0 | confirmed: 18 records in OpenAlex | S3, S10, S18, S7, S11, S16 |
+| G4 | Spiking neural network on Smartphone: no included study | Spiking neural network: 7 studies; Smartphone: 5 studies; together: 0 | confirmed: 5 records in OpenAlex | S3, S10, S18, S32, S35, S51 |
+| G5 | Classical ML (SVM, trees, kNN) on Smartphone: no included study | Classical ML (SVM, trees, kNN): 6 studies; Smartphone: 5 studies; together: 0 | not confirmed: 89 records in OpenAlex (our sample may have missed them) | S13, S27, S31, S32, S35, S51 |
+| G6 | Most studies rely on one dataset (MIT-BIH Arrhythmia) | 23 of 29 studies that name a dataset | judged on the included studies | S13, S26, S36, S50, S51 |
+| G7 | Model family 'Transformer / state-space': only 2 included studies | 2 of 55 studies | not confirmed: 131 records in OpenAlex (our sample may have missed them) | S37, S49 |
+| G8 | Device 'Single-board computer': only 2 included studies | 2 of 55 studies | not confirmed: 110 records in OpenAlex (our sample may have missed them) | S2, S5 |
+
 ### Risk of bias
 
 Overall: unclear 46, high 9. Per-study judgements are in Appendix B.
@@ -227,11 +242,11 @@ The evidence is limited by the high number of studies with unclear risk of bias 
 
 ## Discussion
 
-The review identified 55 studies that explored various lightweight machine-learning models for ECG detection, with a notable emphasis on convolutional networks across different devices. The reported accuracy figures, ranging from 82% to 99.1%, indicate a wide variability in model performance, influenced by differing datasets, train/test splits, and class sets, which complicates direct comparisons between studies.
+The findings indicate that while a variety of lightweight machine-learning models have been explored for ECG detection, the majority of studies were assessed based on abstracts only, which raises concerns about the robustness of the reported results. The most frequent model used was the Convolutional network, particularly on wearable devices, but the variability in datasets and methodologies limits the comparability of accuracy figures across studies.
 
-A significant limitation of this review is the high number of studies (39 out of 55) that were assessed based solely on abstracts, which raises concerns about the completeness and reliability of the extracted data. Additionally, the overall risk of bias was deemed unclear for 46 studies, suggesting that many findings may lack robust validation due to insufficient reporting in the available texts.
+Moreover, the review identified significant gaps in the measurement of efficiency metrics, with many studies failing to report critical parameters such as latency, power consumption, and memory usage. This lack of detailed efficiency analysis may hinder the practical application of these models in real-world scenarios, where resource constraints are a primary concern.
 
-Future research should aim to include full-text evaluations to provide a more comprehensive understanding of model performance. Furthermore, expanding the search to include additional databases could uncover relevant studies that were not indexed in the current review, thereby enriching the evidence base for lightweight machine-learning models in ECG detection.
+To advance the field, future research should prioritize the establishment of standardized evaluation protocols that ensure comprehensive reporting of model performance and efficiency. Additionally, exploring underrepresented model types, such as spiking neural networks on microcontrollers and smartphones, could provide valuable insights into alternative approaches for ECG detection.
 
 ### Limitations
 
@@ -242,9 +257,23 @@ Future research should aim to include full-text evaluations to provide a more co
 - Risk of bias used the review's own instrument; a domain without a verified quote is scored unclear, so 'unclear' often means 'not reported in the text read'.
 - Screening, extraction and synthesis are done by LLM agents with code checks; a human checked only the steps where the run paused for approval.
 
+## Research agenda: proposed approaches
+
+*Proposals for future studies, one per evidence gap that holds after the check; they follow from the gaps above and are not results of this review.*
+
+G1: Evaluation protocols need improvement. A study should be conducted that clearly states the evaluation protocol, separates subjects between training and test sets, and employs per-class metrics, using datasets like MIT-BIH Arrhythmia and others mentioned in studies S11, S2, S24, S36, S45.
+
+G2: Efficiency metrics are underreported. Future research should systematically measure and report efficiency metrics such as operations, parameters, memory, clock, latency, and power/energy in studies, potentially using the methodologies from studies S11, S20, S23, S24, S38.
+
+G3: Investigate spiking neural networks on microcontrollers. A study should be designed to implement and evaluate spiking neural networks specifically on microcontroller platforms, referencing studies S3, S10, S18, S7, S11, S16 for guidance.
+
+G4: Explore spiking neural networks on smartphones. Research should focus on developing and testing spiking neural networks for ECG detection on smartphones, drawing insights from studies S3, S10, S18, S32, S35, S51.
+
+G6: Diversify datasets beyond MIT-BIH Arrhythmia. Future studies should incorporate a wider range of datasets to validate model performance, referencing studies S13, S26, S36, S50, S51 for potential datasets.
+
 ## Conclusions
 
-This systematic review highlights the potential of lightweight machine-learning models for ECG detection on resource-constrained devices, while also revealing significant limitations in the current literature. Enhanced research efforts are needed to validate these findings and improve the reliability of model assessments.
+In conclusion, this systematic review underscores the need for improved evaluation practices in studies of lightweight machine-learning models for ECG detection. Addressing the identified gaps will be essential for enhancing the reliability and applicability of these technologies in resource-constrained environments.
 
 ## Other information
 
@@ -345,7 +374,7 @@ Agents and models: adjudicator: gpt-4o-mini; coordinator: gpt-4o-mini; critic: g
 
 ### Writing
 
-Drafted by the writer agent from a facts sheet built by code, every number and study label checked: abstract background, abstract results, abstract conclusion, introduction, discussion, conclusion. Written by code: none.
+Drafted by the writer agent from a facts sheet built by code, every number and study label checked: abstract background, abstract results, abstract conclusion, introduction, discussion, conclusion, research agenda. Written by code: none.
 
 ### Quality assurance (critic)
 

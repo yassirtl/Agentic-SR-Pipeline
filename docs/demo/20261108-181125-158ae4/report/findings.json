@@ -164,5 +164,284 @@
     },
     "row_field": "model",
     "col_field": "platform"
-  }
+  },
+  "gaps": [
+    {
+      "kind": "rigour",
+      "statement": "Few studies show they did the key steps well: evaluation protocol stated; subjects separated between training and test; per-class or prevalence-insensitive metric; deployed variant evaluated",
+      "evidence": "D1 low in 10 of 55; D2 low in 9 of 55; D3 low in 13 of 55; D4 low in 4 of 55 (the rest mostly unclear: not reported in the text read; 39 studies were read on the abstract only)",
+      "closest": [
+        "S11",
+        "S2",
+        "S24",
+        "S36",
+        "S45"
+      ],
+      "check": null,
+      "id": "G1",
+      "check_result": null
+    },
+    {
+      "kind": "reporting",
+      "statement": "Efficiency is rarely measured with a number: operations, parameters, memory, clock, latency, power / energy",
+      "evidence": "operations 3 of 55; parameters 8 of 55; memory 8 of 55; clock 2 of 55; latency 8 of 55; power / energy 6 of 55",
+      "closest": [
+        "S11",
+        "S20",
+        "S23",
+        "S24",
+        "S38"
+      ],
+      "check": null,
+      "id": "G2",
+      "check_result": null
+    },
+    {
+      "kind": "combination",
+      "statement": "Spiking neural network on Microcontroller: no included study",
+      "evidence": "Spiking neural network: 7 studies; Microcontroller: 7 studies; together: 0",
+      "closest": [
+        "S3",
+        "S10",
+        "S18",
+        "S7",
+        "S11",
+        "S16"
+      ],
+      "check": [
+        [
+          "ECG",
+          "electrocardiogram",
+          "electrocardiography",
+          "arrhythmia"
+        ],
+        [
+          "spiking",
+          "SNN",
+          "neuromorphic",
+          "reservoir",
+          "RC system"
+        ],
+        [
+          "microcontroller",
+          "MCU",
+          "Arduino",
+          "ESP32",
+          "STM32",
+          "Cortex-M",
+          "nRF52",
+          "MSP430"
+        ]
+      ],
+      "id": "G3",
+      "check_result": {
+        "hits": 18,
+        "few": 25,
+        "confirmed": true
+      }
+    },
+    {
+      "kind": "combination",
+      "statement": "Spiking neural network on Smartphone: no included study",
+      "evidence": "Spiking neural network: 7 studies; Smartphone: 5 studies; together: 0",
+      "closest": [
+        "S3",
+        "S10",
+        "S18",
+        "S32",
+        "S35",
+        "S51"
+      ],
+      "check": [
+        [
+          "ECG",
+          "electrocardiogram",
+          "electrocardiography",
+          "arrhythmia"
+        ],
+        [
+          "spiking",
+          "SNN",
+          "neuromorphic",
+          "reservoir",
+          "RC system"
+        ],
+        [
+          "smartphone",
+          "mobile phone",
+          "Android",
+          "iPhone",
+          "mobile health",
+          "mHealth"
+        ]
+      ],
+      "id": "G4",
+      "check_result": {
+        "hits": 5,
+        "few": 25,
+        "confirmed": true
+      }
+    },
+    {
+      "kind": "combination",
+      "statement": "Classical ML (SVM, trees, kNN) on Smartphone: no included study",
+      "evidence": "Classical ML (SVM, trees, kNN): 6 studies; Smartphone: 5 studies; together: 0",
+      "closest": [
+        "S13",
+        "S27",
+        "S31",
+        "S32",
+        "S35",
+        "S51"
+      ],
+      "check": [
+        [
+          "ECG",
+          "electrocardiogram",
+          "electrocardiography",
+          "arrhythmia"
+        ],
+        [
+          "SVM",
+          "support vector",
+          "random forest",
+          "decision tree",
+          "kNN",
+          "nearest neighbor",
+          "nearest neighbour",
+          "logistic regression"
+        ],
+        [
+          "smartphone",
+          "mobile phone",
+          "Android",
+          "iPhone",
+          "mobile health",
+          "mHealth"
+        ]
+      ],
+      "id": "G5",
+      "check_result": {
+        "hits": 89,
+        "few": 25,
+        "confirmed": false
+      }
+    },
+    {
+      "kind": "dataset",
+      "statement": "Most studies rely on one dataset (MIT-BIH Arrhythmia)",
+      "evidence": "23 of 29 studies that name a dataset",
+      "closest": [
+        "S13",
+        "S26",
+        "S36",
+        "S50",
+        "S51"
+      ],
+      "check": null,
+      "id": "G6",
+      "check_result": null
+    },
+    {
+      "kind": "understudied",
+      "statement": "Model family 'Transformer / state-space': only 2 included studies",
+      "evidence": "2 of 55 studies",
+      "closest": [
+        "S37",
+        "S49"
+      ],
+      "check": [
+        [
+          "ECG",
+          "electrocardiogram",
+          "electrocardiography",
+          "arrhythmia"
+        ],
+        [
+          "transformer",
+          "attention",
+          "Mamba",
+          "MambaOut"
+        ],
+        [
+          "microcontroller",
+          "MCU",
+          "Arduino",
+          "ESP32",
+          "STM32",
+          "Cortex-M",
+          "nRF52",
+          "MSP430",
+          "TinyML",
+          "FPGA",
+          "Xilinx",
+          "Zynq",
+          "Artix",
+          "Virtex",
+          "Kintex",
+          "Spartan",
+          "ASIC",
+          "chip",
+          "VLSI",
+          "CMOS"
+        ]
+      ],
+      "id": "G7",
+      "check_result": {
+        "hits": 131,
+        "few": 25,
+        "confirmed": false
+      }
+    },
+    {
+      "kind": "understudied",
+      "statement": "Device 'Single-board computer': only 2 included studies",
+      "evidence": "2 of 55 studies",
+      "closest": [
+        "S2",
+        "S5"
+      ],
+      "check": [
+        [
+          "ECG",
+          "electrocardiogram",
+          "electrocardiography",
+          "arrhythmia"
+        ],
+        [
+          "Raspberry Pi",
+          "Jetson",
+          "NVIDIA Jetson"
+        ],
+        [
+          "spiking",
+          "SNN",
+          "neuromorphic",
+          "reservoir",
+          "RC system",
+          "CNN",
+          "convolutional",
+          "convolution",
+          "ConvNet",
+          "InceptionNet",
+          "EfficientNet",
+          "ResNet",
+          "MobileNet",
+          "1D-CNN",
+          "2D-CNN",
+          "TCN",
+          "LSTM",
+          "GRU",
+          "recurrent",
+          "RNN"
+        ]
+      ],
+      "id": "G8",
+      "check_result": {
+        "hits": 110,
+        "few": 25,
+        "confirmed": false
+      }
+    }
+  ]
 }

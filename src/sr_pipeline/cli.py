@@ -311,7 +311,7 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
     return run_id, state
 
 
-def report_only(cfg: Config, run_id: str, out=print, llm=None) -> dict:
+def report_only(cfg: Config, run_id: str, out=print, llm=None, counter=None) -> dict:
     """Part 9b: rebuild ``runs/<id>/report/`` from the run's saved ``state.json``, e.g. after
     a fix in the reporting code. Code only ($0) unless ``llm`` is given (``--ai-text``,
     Part 11f): then one writer call drafts the Introduction, Discussion and Conclusions; its
@@ -330,7 +330,7 @@ def report_only(cfg: Config, run_id: str, out=print, llm=None) -> dict:
     meta = json.loads(meta_file.read_text()) if meta_file.exists() else {}
     prev = json.loads(prev_file.read_text()) if prev_file.exists() else None
     update = make_report(run_dir / "report", models=meta.get("models") or agent_models(cfg),
-                         previous_summary=prev, llm=llm)(state)
+                         previous_summary=prev, llm=llm, counter=counter)(state)
     rep = update["report"]
     entry = {"node": "report", "event": "report re-rendered (--report-only)",
              "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -385,20 +385,27 @@ def main(argv: list[str] | None = None) -> int:
                          "(raise it to continue; default: no cap)")
     ap.add_argument("--report-only", metavar="RUN_ID",
                     help="rebuild runs/RUN_ID/report/ from the saved state (no LLM call)")
+    ap.add_argument("--gap-check", action="store_true",
+                    help="with --report-only: check each evidence gap by a hit count in "
+                         "OpenAlex (free, network)")
     ap.add_argument("--ai-text", action="store_true",
                     help="with --report-only: one writer call drafts the Introduction, "
                          "Discussion and Conclusions (about $0.001, checked by code)")
     args = ap.parse_args(argv)
 
-    if args.ai_text and not args.report_only:
-        ap.error("--ai-text goes with --report-only (a full run always uses the writer)")
+    if (args.ai_text or args.gap_check) and not args.report_only:
+        ap.error("--ai-text and --gap-check go with --report-only (a full run always does both)")
     if args.report_only:
         if args.question or args.topic or args.auto or args.resume or args.limit is not None \
                 or args.budget is not None:
             ap.error("--report-only takes only a run id (and --config)")
         cfg = load_config(args.config)
         try:
-            report_only(cfg, args.report_only, llm=cfg.make_llm() if args.ai_text else None)
+            from .reporting.findings import openalex_counter
+            counter = (openalex_counter(cfg.make_http(), contact_email=cfg.contact_email)
+                       if args.gap_check else None)
+            report_only(cfg, args.report_only, llm=cfg.make_llm() if args.ai_text else None,
+                        counter=counter)
         except (FileNotFoundError, ValueError) as exc:
             print(exc, file=sys.stderr)
             return 1

@@ -131,6 +131,12 @@ _ecg_evidence_map: &ecg_evidence_map
   table:
     columns: [model, platform, dataset, partition, classification_metrics, latency, power_energy, memory]
     numeric: [latency, power_energy, memory, parameters, operations, clock]
+  # Part 11h: evidence gaps. A combination / group gap is checked by a hit count in
+  # OpenAlex (title and abstract, the review's years): `base` AND the group's keywords; at
+  # most `few` records = gap confirmed, more = our sample may have missed them.
+  check:
+    base: [ECG, electrocardiogram, electrocardiography, arrhythmia]
+    few: 25
   datasets:
     MIT-BIH Arrhythmia: [MIT-BIH, MITBIH, MIT BIH, MITDB]
     PhysioNet/CinC 2017: [CinC 2017, PhysioNet 2017, Challenge 2017, CinC]

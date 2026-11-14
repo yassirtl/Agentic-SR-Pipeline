@@ -23,6 +23,7 @@ from .graph import build_graph
 from .llm import LLM
 from .protocol import load_template
 from .reporting import make_report
+from .reporting.findings import openalex_counter
 from .sources import search_all
 from .sources.fulltext import fetch_fulltexts
 
@@ -63,7 +64,8 @@ def build_stages(cfg: Config, llm: LLM, run_dir: str | Path, *, topic: dict | No
         "synthesis": make_synthesis(llm, out_dir=run_dir / "figures"),
         "critic": make_critic(llm),
         "report": make_report(run_dir / "report", models=agent_models(cfg),
-                              embedder=embedder, llm=llm),
+                              embedder=embedder, llm=llm,
+                              counter=openalex_counter(http, **common) if http else None),
     }
 
 

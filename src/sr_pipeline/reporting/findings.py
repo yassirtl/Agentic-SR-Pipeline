@@ -316,3 +316,169 @@ def summary_lines(sm: dict, protocol: dict) -> list[str]:
         out.append("Risk of bias (overall): " + ", ".join(f"{k} {v}" for k, v in
                                                           sm["rob"].items()) + ".")
     return out
+
+
+# --- Evidence gaps (Part 11h) -----------------------------------------------------------
+#
+# Found by code in the included studies, never by the LLM. Five kinds:
+# - combination: a model group and a device group that each have >= MIN_GROUP studies but
+#   never appear together;
+# - understudied: a model or device group with 1 or 2 studies;
+# - reporting: a numeric item reported (with a number) by fewer than RARE of the studies;
+# - rigour: a risk-of-bias domain judged low for fewer than RARE of the studies;
+# - dataset: one dataset used by more than CONCENTRATED of the studies that name one.
+# Combination and understudied gaps are checked against OpenAlex (``check_gaps``): our
+# sample may simply have missed the papers that fill them.
+
+MIN_GROUP, RARE, CONCENTRATED, MAX_GAPS = 3, 0.25, 0.6, 8
+
+
+def _row_col_totals(em: dict) -> tuple[Counter, Counter]:
+    rows, cols = Counter(), Counter()
+    for key, labels in em["cells"].items():
+        r, c = key.split("|")
+        rows[r] += len(labels)
+        cols[c] += len(labels)
+    return rows, cols
+
+
+def gaps(state: dict, sp: dict | None, em: dict | None, sm: dict | None) -> list[dict]:
+    """Evidence gaps, most informative first, at most MAX_GAPS. Each gap: id, kind,
+    statement, evidence (numbers), closest study labels, check (blocks of keywords for
+    the OpenAlex count, or None), check_result (filled by ``check_gaps``)."""
+    if not sp or not em or not sm:
+        return []
+    n = sm["n"]
+    out: list[dict] = []
+    real = lambda g: g not in (OTHER, NONE)          # noqa: E731
+    specific = lambda g: real(g) and not g.lower().startswith("other")   # noqa: E731
+    rows, cols = _row_col_totals(em)
+    rgroups, cgroups = sp["rows"].get("groups") or {}, sp["cols"].get("groups") or {}
+    base = list(((sp.get("check") or {}).get("base")) or [])
+
+    def members(axis: str, group: str) -> list[str]:
+        i = 0 if axis == "row" else 1
+        return sorted({lab for key, labs in em["cells"].items() if key.split("|")[i] == group
+                       for lab in labs}, key=_label_key)
+
+    combos = []
+    for r in [g for g in em["rows"] if specific(g) and rows[g] >= MIN_GROUP]:
+        for c in [g for g in em["cols"] if specific(g) and cols[g] >= MIN_GROUP]:
+            if not em["cells"].get(f"{r}|{c}"):
+                combos.append((rows[r] * cols[c], r, c))
+    for _, r, c in sorted(combos, reverse=True)[:3]:
+        out.append({"kind": "combination",
+                    "statement": f"{r} on {c}: no included study",
+                    "evidence": f"{r}: {rows[r]} studies; {c}: {cols[c]} studies; together: 0",
+                    "closest": (members("row", r)[:3] + members("col", c)[:3]),
+                    "check": [base, list(rgroups.get(r) or [])[:8],
+                              list(cgroups.get(c) or [])[:8]] if base else None})
+    for axis, totals, groups, label in (("row", rows, rgroups, em["row_label"]),
+                                        ("col", cols, cgroups, em["col_label"])):
+        for g in [g for g in groups if 0 < totals.get(g, 0) <= 2][:2]:
+            other = cgroups if axis == "row" else rgroups
+            out.append({"kind": "understudied",
+                        "statement": f"{label} '{g}': only {totals[g]} included "
+                                     f"{'study' if totals[g] == 1 else 'studies'}",
+                        "evidence": f"{totals[g]} of {n} studies",
+                        "closest": members(axis, g),
+                        "check": [base, list(groups.get(g) or [])[:8],
+                                  [w for ws in other.values() for w in ws][:20]]
+                        if base else None})
+    numeric = set(((sp.get("table") or {}).get("numeric")) or [])
+    rare = [(key, k) for key, k in sm["reported"].items() if key in numeric and k < RARE * n]
+    if rare:
+        ss = studies(state)
+        first = min(rare, key=lambda x: x[1])[0]
+        out.append({"kind": "reporting",
+                    "statement": "Efficiency is rarely measured with a number: "
+                                 + ", ".join(HEADERS.get(key, key).lower() for key, _ in rare),
+                    "evidence": "; ".join(f"{HEADERS.get(key, key).lower()} {k} of {n}"
+                                          for key, k in rare),
+                    "closest": [s["label"] for s in ss
+                                if sum(has_digit(_value(s["fields"], key)) for key, _ in rare)
+                                >= 2][:5]
+                               or [s["label"] for s in ss
+                                   if has_digit(_value(s["fields"], first))][:5],
+                    "check": None})
+    from .tables import rob_rows
+    low: dict[str, list[str]] = {}
+    for r in rob_rows(state):
+        low.setdefault(r["domain"], [])
+        if r["judgment"] == "low":
+            low[r["domain"]].append(r["label"])
+    names = {d["id"]: d["name"] for d in (state.get("protocol") or {}).get(
+        "checklist_domains") or []}
+    weak = [(d, labs) for d, labs in low.items() if len(labs) < RARE * n]
+    if weak:
+        best = Counter(lab for _, labs in weak for lab in labs)
+        out.append({"kind": "rigour",
+                    "statement": "Few studies show they did the key steps well: "
+                                 + "; ".join(names.get(d, d).lower() for d, _ in weak),
+                    "evidence": "; ".join(f"{d} low in {len(labs)} of {n}" for d, labs in weak)
+                                + f" (the rest mostly unclear: not reported in the text read; "
+                                  f"{sm['abstract_only']} studies were read on the abstract only)",
+                    "closest": [lab for lab, _ in best.most_common(5)],
+                    "check": None})
+    ds = sm.get("datasets") or {}
+    named = sum(ds.values())
+    top = next(((k, v) for k, v in ds.items() if k != OTHER), None)
+    if top and named and top[1] > CONCENTRATED * named:
+        others = [s["label"] for s in studies(state)
+                  if (v := _value(s["fields"], "dataset"))
+                  and classify(v, sp.get("datasets") or {}) != top[0]]
+        out.append({"kind": "dataset",
+                    "statement": f"Most studies rely on one dataset ({top[0]})",
+                    "evidence": f"{top[1]} of {named} studies that name a dataset",
+                    "closest": others[:5], "check": None})
+    order = {"rigour": 0, "reporting": 1, "combination": 2, "dataset": 3, "understudied": 4}
+    out = sorted(out, key=lambda g: order[g["kind"]])[:MAX_GAPS]
+    for i, g in enumerate(out, 1):
+        g["id"] = f"G{i}"
+        g["check_result"] = None
+    return out
+
+
+def check_gaps(gs: list[dict], counter, *, years: dict | None, few: int = 25) -> list[dict]:
+    """Fill ``check_result`` of the gaps that have a check, with ``counter(blocks, years)``
+    -> hit count in OpenAlex (title and abstract). None counter or a failed count: the
+    gap stays unchecked, and the article says so."""
+    for g in gs:
+        if not g.get("check") or counter is None:
+            continue
+        try:
+            hits = int(counter(g["check"], years))
+        except Exception as exc:                      # network or API: stays unchecked
+            g["check_result"] = {"error": f"{type(exc).__name__}"}
+            continue
+        g["check_result"] = {"hits": hits, "few": few, "confirmed": hits <= few}
+    return gs
+
+
+def check_text(g: dict) -> str:
+    r = g.get("check_result")
+    if not g.get("check"):
+        return "judged on the included studies"
+    if not r:
+        return "not checked"
+    if "error" in r:
+        return f"check failed ({r['error']})"
+    if r["confirmed"]:
+        return f"confirmed: {r['hits']} records in OpenAlex"
+    return f"not confirmed: {r['hits']} records in OpenAlex (our sample may have missed them)"
+
+
+def openalex_counter(http, *, contact_email=None, env=None):
+    """counter(blocks, years) -> OpenAlex hit count: blocks of keywords, OR inside a block,
+    AND between blocks, in title and abstract, with the review's years."""
+    from ..sources import make_source
+    from ..sources.base import Concept
+
+    source = make_source("openalex", http, contact_email=contact_email, env=env)
+
+    def count(blocks: list[list[str]], years: dict | None) -> int:
+        concepts = [Concept(name=f"block {i}", keywords=list(b)) for i, b in
+                    enumerate(blocks) if b]
+        return source.count(source.build_query(concepts), years=years)
+
+    return count
