@@ -27,7 +27,8 @@ from .sources import search_all
 from .sources.fulltext import fetch_fulltexts
 
 AGENTS = ("coordinator", "planner", "search_strategy", "screener_a", "screener_b",
-          "adjudicator", "reranker", "extraction", "risk_of_bias", "synthesis", "critic")
+          "adjudicator", "reranker", "extraction", "risk_of_bias", "synthesis", "critic",
+          "writer")
 
 
 def agent_models(cfg: Config) -> dict[str, str]:
@@ -62,7 +63,7 @@ def build_stages(cfg: Config, llm: LLM, run_dir: str | Path, *, topic: dict | No
         "synthesis": make_synthesis(llm, out_dir=run_dir / "figures"),
         "critic": make_critic(llm),
         "report": make_report(run_dir / "report", models=agent_models(cfg),
-                              embedder=embedder),
+                              embedder=embedder, llm=llm),
     }
 
 

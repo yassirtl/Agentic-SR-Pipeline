@@ -5,6 +5,8 @@
   "unique": 555,
   "screened": 100,
   "not_screened": 455,
+  "by_rule": 2,
+  "read": 98,
   "ta_kept": 70,
   "sought": 70,
   "full_text_read": 30,

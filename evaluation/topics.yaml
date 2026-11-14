@@ -97,6 +97,49 @@ _ecg_rob_domains: &ecg_rob_domains
   - [D4, Deployed variant evaluated, "Can the classification quality of the variant actually deployed on the device be separated from the best software result?"]
   - [D5, Model size reported, "Is a parameter count or a memory footprint of the model reported?"]
 
+# Part 11f: evidence map and summary of findings in the article (report stage, code
+# only). Rows x columns = two extraction fields, each value put in the first group whose
+# keyword it contains (whole word, case-insensitive; plural allowed); a study whose field
+# is "not reported" is classified from its title instead (said in the article); no
+# keyword -> "Other", no value and no keyword in the title -> "Not reported", so every
+# study is counted once. `datasets`: same rule on the dataset field, for the summary.
+_ecg_evidence_map: &ecg_evidence_map
+  rows:
+    field: model
+    label: Model family
+    groups:
+      Spiking neural network: [spiking, SNN, neuromorphic, reservoir, RC system]
+      Convolutional network (CNN): [CNN, convolutional, convolution, ConvNet, InceptionNet, EfficientNet, ResNet, MobileNet, 1D-CNN, 2D-CNN, TCN]
+      Recurrent network (LSTM, GRU): [LSTM, GRU, recurrent, RNN, BiLSTM]
+      Transformer / state-space: [transformer, attention, Mamba, MambaOut]
+      Graph neural network: [graph neural, GNN, GCN, RGNN]
+      Classical ML (SVM, trees, kNN): [SVM, support vector, random forest, decision tree, kNN, nearest neighbor, nearest neighbour, logistic regression, XGBoost, LightGBM, gradient boosting, boosting, naive Bayes, LDA]
+      Other neural network: [neural network, deep learning, DNN, MLP, perceptron, weightless, autoencoder]
+  cols:
+    field: platform
+    label: Device
+    groups:
+      Microcontroller: [microcontroller, MCU, Arduino, ESP32, STM32, Cortex-M, nRF52, MSP430, TinyML]
+      FPGA: [FPGA, Xilinx, Zynq, Artix, Virtex, Kintex, Spartan]
+      ASIC / processor / SoC: [ASIC, chip, VLSI, CMOS, processor, SoC, system on chip, accelerator, RISC-V, in-memory, memristor, charge-trap]
+      Smartphone: [smartphone, mobile phone, Android, iPhone, mobile health, mHealth]
+      Single-board computer: [Raspberry Pi, Jetson, NVIDIA Jetson]
+      Wearable (unspecified hardware): [wearable, wearables, watch, patch, Holter, portable]
+      Edge / embedded (unspecified): [edge, embedded, IoT, IoMT, on-device, low-power, low power, resource-constrained]
+  # Study table of the article: these extraction fields as columns (in this order); a
+  # `numeric` field shows only a value with a digit ("not reported" otherwise, rule stated).
+  table:
+    columns: [model, platform, dataset, partition, classification_metrics, latency, power_energy, memory]
+    numeric: [latency, power_energy, memory, parameters, operations, clock]
+  datasets:
+    MIT-BIH Arrhythmia: [MIT-BIH, MITBIH, MIT BIH, MITDB]
+    PhysioNet/CinC 2017: [CinC 2017, PhysioNet 2017, Challenge 2017, CinC]
+    PTB / PTB-XL: [PTB-XL, PTB, PTBXL]
+    INCART: [INCART]
+    CPSC: [CPSC]
+    Chapman / Shaoxing: [Chapman, Shaoxing, Ningbo]
+    Own / private recordings: [own, private, collected, in-house, volunteers, subjects, hospital]
+
 # Part 10b (from the T2 run 20261108-114756-7b0e80: 75 of 100 included, nearly all generic
 # heartbeat classifiers with no device). `search_terms` fixes a search block by role: code
 # builds it, so a refinement can never drop it. `evidence_terms` on a criterion: a 'yes'
@@ -162,6 +205,7 @@ T2:
   extraction_fields: *engineering_fields
   checklist_name: Five-domain instrument of Arredondo-Velazquez 2026 (Table 2)
   checklist_domains: *ecg_rob_domains
+  evidence_map: *ecg_evidence_map
   note: >-
     No gold list: evaluation by human labels on a sample of screening decisions; the gold
     funnel does not apply. Closest published reviews are broader (Springer 2026 DL
@@ -199,6 +243,7 @@ T3:
   extraction_fields: *engineering_fields
   checklist_name: Five-domain instrument of Arredondo-Velazquez 2026 (Table 2)
   checklist_domains: *ecg_rob_domains
+  evidence_map: *ecg_evidence_map
   note: >-
     Gold = the 30 implementations of Table 2 (refs 27-56, the same 30 as Table 5); 3 of
     them are older than the window (Raj 2018, Wu 2019, Saadatnejad 2020: "earlier works

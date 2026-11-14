@@ -563,13 +563,23 @@ def results_screen(run_dir: Path, r: dict, *, demo: bool) -> None:
         return f'<div class="b"><b>{P._num(n)}</b>{e(label)}</div>'
     st.markdown('<div class="funnel">' + box(r.get("found"), "papers found")
                 + '<span class="a">→</span>' + box(r.get("unique"), "after removing duplicates")
-                + '<span class="a">→</span>' + box(r.get("screened"), "read by the AI")
+                + '<span class="a">→</span>' + box(r.get("read") or r.get("screened"),
+                                                     "read by the AI")
                 + '<span class="a">→</span>' + box(r.get("included"), "kept in the review")
                 + "</div>", unsafe_allow_html=True)
+    notes = []
     if r.get("not_screened"):
-        st.caption(f"{P._num(r['not_screened'])} less relevant papers were not read (size "
-                   f"chosen at the start). {P._num(r.get('abstract_only'))} papers had no free "
-                   "full text and were judged on their summary.")
+        notes.append(f"The {P._num(r.get('screened'))} most relevant papers were selected; "
+                     f"{P._num(r['not_screened'])} less relevant ones were not read (size "
+                     "chosen at the start).")
+    if r.get("by_rule"):
+        notes.append(f"{P._num(r['by_rule'])} were removed first by a rule (a review or a "
+                     "preprint), before the AI read them.")
+    if r.get("abstract_only"):
+        notes.append(f"{P._num(r['abstract_only'])} papers had no free full text and were "
+                     "judged on their summary.")
+    if notes:
+        st.caption(" ".join(notes))
     files = F.report_files(run_dir)
     docx = next((f for f in files if f.suffix == ".docx"), files[0] if files else None)
     c1, c2, c3 = st.columns([1, 1, 1])
@@ -580,6 +590,14 @@ def results_screen(run_dir: Path, r: dict, *, demo: bool) -> None:
         go(flow_step=6)
     if c3.button("Check the AI's accuracy →", key="to_checks", type="primary", width="stretch"):
         go(flow_step=5, chk_idx=0, chk_item=None)
+    fnd = F.findings(run_dir)
+    if fnd:
+        st.markdown("#### What the studies show")
+        st.markdown("\n".join(f"- {x}" for x in fnd.get("summary") or []))
+        png = run_dir / "report" / "evidence_map.png"
+        if png.exists():
+            with st.expander("See the evidence map (model family × device)"):
+                st.image(str(png))
     kept = r.get("kept") or []
     with st.expander(f"See the {len(kept)} papers kept, with the proof for each"):
         for i, k in enumerate(kept, start=1):

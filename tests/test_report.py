@@ -223,13 +223,26 @@ def coordinator(prompt):
     return {"next": next((s for s in STAGES if s not in done), "report"), "rationale": "next"}
 
 
+# Part 11f: the writer's answer (no numbers, so every section passes the code checks).
+WRITER = {"abstract_background": "Depressive symptoms are common in older adults.",
+          "abstract_results": "The included trials compared exercise with usual care.",
+          "abstract_conclusion": "Exercise may reduce depressive symptoms; the evidence is "
+                                 "limited.",
+          "introduction": ["Depression in later life is common.",
+                           "This review asks whether exercise reduces depressive symptoms."],
+          "discussion": ["The trials point in one direction.", "Most were small.",
+                         "Larger trials are needed."],
+          "conclusion": "Exercise may help; a reviewer should check the trials."}
+
+
 def e2e_llm():
     return ScriptedLLM({"coordinator": coordinator, "planner": lambda p: DRAFT,
                      "search_strategy": lambda p: PLAN,
                      "screener_a": screener("a"), "screener_b": screener("b"),
                      "adjudicator": lambda p: verdicts(p, "unresolved"),
                      "extraction": extractor, "risk_of_bias": lambda p: {"domains": []},
-                     "synthesis": synthesis, "critic": lambda p: {"issues": []}})
+                     "synthesis": synthesis, "critic": lambda p: {"issues": []},
+                     "writer": lambda p: WRITER})
 
 
 def e2e_config(tmp_path):
@@ -240,6 +253,7 @@ def e2e_config(tmp_path):
 INJECT = {"search": fake_search, "fetch": fake_fetch, "embedder": FakeEmbedder(), "http": None}
 
 REPORT_FILES = {"prisma_flow.png", "manuscript.md", "manuscript.docx", "references.bib",
+                "writer.json",
                 "run_summary.json", "prisma_counts.json", "protocol.json",
                 *(f"tables/{t}.csv" for t in ("studies", "extraction", "results",
                                               "risk_of_bias", "screening"))}

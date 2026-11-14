@@ -130,40 +130,43 @@ def _cached_share(audit: list[dict]) -> tuple[int, int]:
 
 # --- Sections -------------------------------------------------------------------------------
 
-def _methods(state: dict, models: dict[str, str]) -> list[str]:
+def _methods(state: dict, models: dict[str, str], findings_spec: dict | None = None) -> list[str]:
     p = state["protocol"]
     pico = p.get("pico") or {}
     strat = state.get("search_strategy") or {}
     ident = (state.get("prisma_counts") or {}).get("identification") or {}
     years = p.get("years") or {}
     out = ["## Methods", "", "### Protocol and eligibility criteria", "",
-           f"Review question: {p.get('question', '')}", "",
-           md_table([{"k": "Population", "v": pico.get("population")},
-                     {"k": "Intervention / exposure", "v": pico.get("intervention")},
-                     {"k": "Comparator", "v": pico.get("comparator")},
-                     {"k": "Outcomes", "v": "; ".join(pico.get("outcomes") or [])}],
-                    [("k", "PICO"), ("v", "")]), "",
-           f"Study designs: {', '.join(p.get('study_designs') or []) or 'no restriction'}. "
-           f"Years: {years.get('start') or 'any'} to {years.get('end_date') or years.get('end') or 'any'}"
-           + (f" (last {years['recent']} years, the template default)" if years.get("recent")
-              else "") + ". "
-           f"Languages: {', '.join(p.get('languages') or []) or 'any'}. "
-           f"Criteria source: {p.get('criteria_source') or 'Planner (LLM draft), approved'}.",
-           ""]
+           f"Review question: {p.get('question', '')}", ""]
+    if not p.get("extraction_fields"):        # a clinical question: the PICO table
+        out += [md_table([{"k": "Population", "v": pico.get("population")},
+                          {"k": "Intervention / exposure", "v": pico.get("intervention")},
+                          {"k": "Comparator", "v": pico.get("comparator")},
+                          {"k": "Outcomes", "v": "; ".join(pico.get("outcomes") or [])}],
+                         [("k", "PICO"), ("v", "")]), ""]
+    else:
+        out += ["Outcomes of interest: " + "; ".join(pico.get("outcomes") or []) + ".", ""]
+    out += [f"Study designs: {', '.join(p.get('study_designs') or []) or 'no restriction'}. "
+            f"Years: {_years(years)}. "
+            f"Languages: {', '.join(p.get('languages') or []) or 'any'}. Eligibility "
+            "criteria (the study must meet every inclusion criterion):", ""]
     ft_only = set(p.get("full_text_criteria") or [])
     out += [f"- **{cid}** {text}" + (" *(full text only)*" if text in ft_only else "")
             for cid, text in criteria(p)]
-    out += ["", "The protocol was drafted by the Planner agent and fixed before the search "
-            "(human approval step unless the run used `--auto`)."]
+    out += ["", "The protocol (question, criteria, outcomes, databases) was drafted by an "
+            "LLM planner and fixed before the search; it is published with this review "
+            "(`protocol.json`). Where the criteria came from is given in Appendix A."]
 
     out += ["", "### Information sources and search strategy", "",
-            f"Databases: {', '.join(p.get('databases') or [])}"
-            + (f" ({p['database_reason']})" if p.get("database_reason") else "") + ". "
+            f"Databases: {_dbs(p)}"
+            + (f" ({p['database_reason'].strip().rstrip('.')})" if p.get("database_reason")
+               else "") + ". "
             "The LLM proposes the search concepts; code builds each database's Boolean query "
             "and design filter, checks the hit counts before any download, and refines at "
             "most twice.", ""]
     dbs = ident.get("databases") or {}
-    rows = [{"db": db, "query": q, "searched": (dbs.get(db) or {}).get("searched_at"),
+    rows = [{"db": DB_NAMES.get(db, db), "query": q,
+             "searched": (dbs.get(db) or {}).get("searched_at"),
              "hits": (dbs.get(db) or {}).get("identified"),
              "dl": (dbs.get(db) or {}).get("downloaded"),
              "nr": (dbs.get(db) or {}).get("not_retrieved")}
@@ -204,26 +207,30 @@ def _methods(state: dict, models: dict[str, str]) -> list[str]:
             "human (or were included with `--auto`). Full texts (open access only: PMC XML, "
             "open PDFs) were indexed (FAISS + BM25, LLM re-ranking) and the screeners read "
             "the best passages per criterion; papers without a full text were assessed on "
-            "the abstract and flagged.", "",
-            "Screening rules were tuned on a development sample of the T3 topic and then "
-            "frozen (no change after seeing the held-out topics, except reported bug fixes). "
-            "Changes made during tuning:", ""]
-    out.append(md_table([{"p": pt, "c": c} for pt, c in SCREENING_CHANGES],
-                        [("p", "Part"), ("c", "Change")]))
+            "the abstract and flagged. The screening rules were tuned on a separate "
+            "development topic and frozen before this review (Appendix A).", ""]
+    fields = p.get("extraction_fields") or {}
+    if fields:
+        out += ["### Data items", "",
+                "For every included study the following items were extracted, each with "
+                "the sentence that supports it:", ""]
+        out += [f"- **{k.replace('_', ' ')}**: {v}" for k, v in fields.items()]
 
     order = ", ".join(x.replace("_", " ") for x in metric_order(p))
     out += ["", "### Data collection and risk of bias", "",
             "Fields were derived from the protocol (PICO, design, sample size, outcomes and "
             "results). A value was kept only with a quote found in the passages shown and "
             "every number of the value printed in that quote; otherwise it is `not "
-            "reported` (values are never computed or invented). Risk of bias tool chosen by "
-            "code from the verified design: RoB 2 (randomised trials, first protocol "
-            "outcome), ROBINS-I (non-randomised studies), QUADAS-2 (diagnostic accuracy), "
-            "else a 5-item checklist; a domain judgment needs a verified quote."
-            + (f" This protocol replaces them with its own instrument for every study "
+            "reported` (values are never computed or invented). "
+            + (f"Risk of bias was assessed for every study with the review's own instrument "
                f"({p.get('checklist_name') or 'review-specific checklist'}: "
-               + "; ".join(f"{d['id']} {d['name']}" for d in p['checklist_domains']) + ")."
-               if p.get("checklist_domains") else ""), "",
+               + "; ".join(f"{d['id']} {d['name']}" for d in p['checklist_domains'])
+               + "); a domain without a verified quote is scored unclear."
+               if p.get("checklist_domains") else
+               "Risk of bias tool chosen by code from the verified design: RoB 2 "
+               "(randomised trials, first protocol outcome), ROBINS-I (non-randomised "
+               "studies), QUADAS-2 (diagnostic accuracy), else a 5-item checklist; a domain "
+               "judgment needs a verified quote."), "",
             "### Synthesis methods", "",
             f"Continuous outcomes were pooled (random effects, DerSimonian-Laird; Hedges' g "
             f"from post-intervention means) only with at least {MIN_POOL} studies reporting "
@@ -240,21 +247,57 @@ def _methods(state: dict, models: dict[str, str]) -> list[str]:
             "times. An LLM objection counted as a blocker only when code confirmed the "
             "wrong value."]
 
+    if p.get("extraction_fields") and findings_spec:
+        out += ["", "Because the studies report different measures on different datasets, "
+                "no effect was pooled across them. The studies were mapped by "
+                f"{findings_spec['rows'].get('label', 'row').lower()} and "
+                f"{findings_spec['cols'].get('label', 'column').lower()} (evidence map): each "
+                "value was put in the first group whose keyword it contains, a study whose "
+                "value was not reported was classified from its title, and the rest are "
+                "shown as Other or Not reported. Numeric items (e.g. latency, power) are "
+                "shown only when the extracted value contains a number."]
+    models_used = sorted(set(models.values())) or ["the default model"]
+    out += ["", "### Use of automation tools", "",
+            "Every step after the protocol was carried out by LLM agents "
+            f"({', '.join(models_used)}, temperature 0) under code checks: the search, "
+            "screening (two screeners and an adjudicator), extraction, risk of bias, the "
+            "synthesis and a critic. A person approved the protocol and settled the "
+            "disagreements the adjudicator could not, unless the run was fully automatic. "
+            "Agents, models, cache use and cost are listed in Appendix A."]
+    return out
+
+
+DB_NAMES = {"openalex": "OpenAlex", "pubmed": "PubMed", "arxiv": "arXiv"}
+
+
+def _dbs(p: dict) -> str:
+    return ", ".join(DB_NAMES.get(d, d) for d in p.get("databases") or [])
+
+
+def _years(years: dict) -> str:
+    start = years.get("start")
+    end = years.get("end_date") or years.get("end")
+    text = (f"{start} to {end}" if start and end else f"{start} onward" if start
+            else f"up to {end}" if end else "no restriction")
+    return text + (f" (last {years['recent']} years, the template default)"
+                   if years.get("recent") else "")
+
+
+def _reproducibility(state: dict, models: dict[str, str]) -> list[str]:
     calls, cached = _cached_share(state.get("audit_log", []))
     used = sorted({f"{a}: {m}" for a, m in models.items()})
-    out += ["", "### Automation and reproducibility", "",
-            "Agents and models: " + ("; ".join(used) or "default model for every agent")
+    return ["Agents and models: " + ("; ".join(used) or "default model for every agent")
             + ". Temperature 0. Every LLM answer is cached on disk, keyed on (model, output "
             "schema, prompt): re-running the review with the same cache reproduces every "
             f"decision at no cost. In this run {cached} of {calls} LLM calls came from the "
             "cache. A fresh run without the cache can differ: the model is not "
             "deterministic across calls (seen during development: a re-extraction lost one "
             "study's table result and gained another's). Database answers are cached the "
-            "same way; the search dates are those listed above."]
-    return out
+            "same way; the search dates are those listed in the Methods."]
 
 
-def _results(state: dict, base: Path, prisma_png: Path | None) -> list[str]:
+def _results(state: dict, base: Path, prisma_png: Path | None, fx: dict | None = None) -> list[str]:
+    fx = fx or {}
     syn = state.get("synthesis") or {}
     pc = state.get("prisma_counts") or {}
     c = flow_counts(pc, state.get("protocol"))
@@ -287,23 +330,54 @@ def _results(state: dict, base: Path, prisma_png: Path | None) -> list[str]:
     for r in studies:
         r["who"] = f"{r['label']} {r['author']} {r['year'] or ''}".strip()
         r["used"] = r["text_used"] + (f" {DAGGER}" if r["text_used"] == "abstract only" else "")
-    out += ["", "### Study characteristics", "",
-            md_table(studies, [("who", "Study"), ("design", "Design"),
-                               ("country", "Country"), ("n_enrolled", "n"),
-                               ("population", "Population"),
-                               ("intervention", "Intervention"),
-                               ("comparator", "Comparator"), ("used", "Text used")])]
+    out += ["", "### Study characteristics", ""]
+    if fx.get("table"):
+        rows, cols = fx["table"]
+        out += ["Values as extracted, each backed by a sentence of the paper (see "
+                "`tables/extraction.csv`); – = not reported (numeric items: no number "
+                "given).", "", md_table(rows, cols)]
+    else:
+        out.append(md_table(studies, [("who", "Study"), ("design", "Design"),
+                                      ("country", "Country"), ("n_enrolled", "n"),
+                                      ("population", "Population"),
+                                      ("intervention", "Intervention"),
+                                      ("comparator", "Comparator"), ("used", "Text used")]))
+
+    em = fx.get("em")
+    if em:
+        from .findings import evidence_map_rows
+        src_r, src_c = em["sources"]["rows"], em["sources"]["cols"]
+        rows, cols = evidence_map_rows(em)
+        out += ["", "### Evidence map", "",
+                f"Each of the {em['n']} included studies is counted once, by "
+                f"{em['row_label'].lower()} and {em['col_label'].lower()}. "
+                f"{em['row_label']}: from the extracted value for {src_r.get('value', 0)} "
+                f"studies, from the title for {src_r.get('title', 0)}; "
+                f"{em['col_label'].lower()}: from the value for {src_c.get('value', 0)}, "
+                f"from the title for {src_c.get('title', 0)}."]
+        if fx.get("map_png"):
+            out += ["", f"![Evidence map]({_rel(fx['map_png'], base)})"]
+        out += ["", md_table(rows, cols)]
+    if fx.get("sof"):
+        out += ["", "### Summary of findings", ""] + [f"- {x}" for x in fx["sof"]]
 
     by_study: dict[str, list[str]] = {}
+    per_domain: dict[str, Counter] = {}
     for r in rob_rows(state):
         by_study.setdefault(r["label"], []).append(f"{r['domain']} {r['judgment']}")
-    rob = [{"who": s["who"], "tool": s["rob_tool"], "overall": s["rob_overall"],
-            "domains": "; ".join(by_study.get(s["label"], []))} for s in studies]
+        per_domain.setdefault(r["domain"], Counter())[r["judgment"]] += 1
     levels = Counter(s["rob_overall"] for s in studies)
+    names = {d["id"]: d["name"] for d in (state.get("protocol") or {}).get(
+        "checklist_domains") or []}
     out += ["", "### Risk of bias", "",
             "Overall: " + (", ".join(f"{k} {v}" for k, v in levels.most_common()) or "none")
-            + ".", "", md_table(rob, [("who", "Study"), ("tool", "Tool"),
-                                      ("overall", "Overall"), ("domains", "Domains")])]
+            + ". Per-study judgements are in Appendix B."]
+    if per_domain:
+        out += ["", md_table([{"d": f"{d} {names.get(d, '')}".strip(),
+                               "low": c.get("low", 0), "unclear": c.get("unclear", 0),
+                               "high": c.get("high", 0)} for d, c in per_domain.items()],
+                             [("d", "Domain"), ("low", "Low"), ("unclear", "Unclear"),
+                              ("high", "High")])]
 
     out += ["", "### Synthesis of results", ""]
     for g in syn.get("outcomes", []):
@@ -368,8 +442,8 @@ def _limitations(state: dict) -> list[str]:
     studies = syn.get("studies", [])
     abstract = [s["label"] for s in studies if s["abstract_only"]]
     p = state.get("protocol") or {}
-    out = ["## Limitations", "",
-           f"- Databases searched: {', '.join(p.get('databases') or [])} only (free "
+    out = ["### Limitations", "",
+           f"- Databases searched: {_dbs(p)} only (free "
            "sources); reviews that also search Embase, Cochrane or Scopus may find studies "
            "these do not index."]
     ta = (state.get("prisma_counts") or {}).get("title_abstract") or {}
@@ -400,8 +474,11 @@ def _limitations(state: dict) -> list[str]:
     out += ["- Extraction values need a verified quote: correct values paraphrased by the "
             "model are refused and reported as `not reported` (conservative, lowers "
             "completeness).",
-            "- Risk of bias (RoB 2) was assessed for the first protocol outcome only; "
-            "diagnostic pooling is univariate (not the bivariate model).",
+            ("- Risk of bias used the review's own instrument; a domain without a verified "
+             "quote is scored unclear, so 'unclear' often means 'not reported in the text "
+             "read'." if p.get("checklist_domains") else
+             "- Risk of bias (RoB 2) was assessed for the first protocol outcome only; "
+             "diagnostic pooling is univariate (not the bivariate model)."),
             "- Screening, extraction and synthesis are done by LLM agents with code checks; "
             "a human checked only the steps where the run paused for approval."]
     return out
@@ -420,32 +497,180 @@ def _references(state: dict) -> list[str]:
     return out
 
 
+def _rob_per_study(state: dict) -> list[str]:
+    studies = study_rows(state)
+    by_study: dict[str, list[str]] = {}
+    for r in rob_rows(state):
+        by_study.setdefault(r["label"], []).append(f"{r['domain']} {r['judgment']}")
+    rob = [{"who": f"{s['label']} {s['author']} {s['year'] or ''}".strip(),
+            "tool": s["rob_tool"], "overall": s["rob_overall"],
+            "domains": "; ".join(by_study.get(s["label"], []))} for s in studies]
+    return ["## Appendix B. Risk of bias per study", "",
+            md_table(rob, [("who", "Study"), ("tool", "Tool"), ("overall", "Overall"),
+                           ("domains", "Domains")])]
+
+
+def _appendix(state: dict, models: dict[str, str], summary: dict, writer: dict | None) -> list[str]:
+    p = state.get("protocol") or {}
+    out = ["## Appendix A. How this review was produced", "",
+           f"Run `{summary.get('run_id') or ''}`. Criteria source: "
+           f"{p.get('criteria_source') or 'Planner (LLM draft), approved'}. The protocol "
+           "was approved by a person unless the run used `--auto`.", "",
+           "### Screening rules", "",
+           "The screening rules were tuned on a development topic (exercise and depression) "
+           "and then frozen (no change after seeing the evaluation topics, except reported "
+           "bug fixes). Changes made during tuning:", "",
+           md_table([{"p": pt, "c": c} for pt, c in SCREENING_CHANGES],
+                    [("p", "Part"), ("c", "Change")]), "",
+           "### Automation and reproducibility", "", *_reproducibility(state, models)]
+    if writer:
+        ai = [k.replace("_", " ") for k, v in writer["source"].items() if v == "ai"]
+        code = [k.replace("_", " ") for k, v in writer["source"].items() if v == "code"]
+        line = ("Drafted by the writer agent from a facts sheet built by code, every number "
+                "and study label checked: " + (", ".join(ai) or "none") + ". Written by code: "
+                + (", ".join(code) or "none") + ".")
+        if writer.get("flags"):
+            line += " Sections replaced by the code text after a failed check: " + "; ".join(
+                f"{k.replace('_', ' ')} ({'; '.join(v)})" for k, v in writer["flags"].items()) + "."
+        if writer.get("error"):
+            line += f" Writer call failed: {writer['error']}."
+        out += ["", "### Writing", "", line]
+    qa = _qa(state)
+    qa[0] = "### " + qa[0].lstrip("# ")
+    out += ["", *qa, "", "### Run summary", "", summary_markdown(summary)]
+    return out
+
+
+def _other_information() -> list[str]:
+    return ["## Other information", "",
+            "- **Registration and protocol.** Not registered. The protocol is published with "
+            "the review (`protocol.json`); where its criteria came from is in Appendix A.",
+            "- **Support and competing interests.** [to be completed by the authors]",
+            "- **Availability of data.** Evidence tables, extracted values with their "
+            "quotes, screening decisions and the BibTeX file are published with the review "
+            "(`tables/`, `references.bib`).",
+            "- **Use of AI.** This draft was produced by LLM agents under code checks; every "
+            "number in the text comes from the tables. A reviewer must check it before use."]
+
+
+def _prior_reviews(p: dict) -> str | None:
+    """What the topic says about existing reviews (topics.yaml ``review``), if anything."""
+    if not p.get("topic"):
+        return None
+    try:
+        from ..evaluation.topics import load_topic
+        review = load_topic(str(p["topic"])).get("review")
+    except (KeyError, FileNotFoundError, ValueError, OSError):
+        return None
+    if not review:
+        return None
+    import re
+    return re.split(r",\s*(?:doi|PMC)", str(review).strip())[0]
+
+
+def facts_sheet(state: dict, fx: dict | None = None) -> tuple[str, dict]:
+    """What the writer may use (text) and the numbers the code text needs (dict). Built
+    by code from the state: counts, summary of findings or synthesis, risk of bias,
+    limitations. Nothing else reaches the writer."""
+    fx = fx or {}
+    p = state.get("protocol") or {}
+    pc = state.get("prisma_counts") or {}
+    n = flow_counts(pc, p)["numbers"]
+    syn = state.get("synthesis") or {}
+    studies = syn.get("studies", [])
+    lines = [f"Question: {p.get('question', '')}",
+             f"Databases: {_dbs(p)}; years: "
+             f"{_years(p.get('years') or {})}.",
+             f"Records identified: {n['identified']}; duplicates removed: "
+             f"{n['duplicates']}; screened on title and abstract: {n['screened']}"
+             + (f" (the {n['screen_limit']} most relevant; {n['not_screened']} less "
+                "relevant records were not screened)" if n.get("not_screened") else "")
+             + f"; full texts sought: {n['sought']}; included studies: {n['included']}.",
+             f"Included studies judged on the abstract only (no open-access full text): "
+             f"{sum(1 for s in studies if s.get('abstract_only'))} of {len(studies)}."]
+    prior = _prior_reviews(p)
+    if prior:
+        lines.append(f"Prior systematic reviews on this question: {prior}.")
+    if fx.get("sof"):
+        lines += ["Summary of findings:"] + [f"- {x}" for x in fx["sof"]]
+    else:
+        for g in syn.get("outcomes", []):
+            vc = ", ".join(f"{k} {v}" for k, v in g["vote_count"].items()
+                           if k != "sign_test_p" and v is not None)
+            lines.append(f"Outcome {g['outcome']}: {g['method']}; vote count {vc}."
+                         + (" Pooled: " + pooled_sentence(g["meta"], brief=True)
+                            if g.get("meta") else ""))
+    levels = Counter(s.get("rob_overall") for s in studies)
+    lines.append("Risk of bias, overall: " + ", ".join(f"{k} {v}" for k, v in
+                                                      levels.most_common()) + ".")
+    lines += ["Limitations of this review:"] + [x for x in _limitations(state)[2:] if x]
+    d = {"identified": n["identified"], "screened": n["screened"], "included": n["included"],
+         "headline": next((x for x in fx.get("sof") or [] if "accuracy" in x.lower()), "")}
+    return "\n".join(lines), d
+
+
+def _paras(x) -> list[str]:
+    items = x if isinstance(x, list) else [x]
+    out = []
+    for t in items:
+        if t:
+            out += [t, ""]
+    return out[:-1] if out else []
+
+
 def manuscript(state: dict, *, base: Path, models: dict[str, str], summary: dict,
-               prisma_png: Path | None = None) -> str:
-    """Full Markdown text. ``base`` = folder of the .md file (image paths are relative)."""
+               prisma_png: Path | None = None, fx: dict | None = None,
+               writer: dict | None = None) -> str:
+    """Full Markdown text. ``base`` = folder of the .md file (image paths are relative).
+    ``fx``: findings (study table, evidence map, summary of findings; ``findings.py``);
+    ``writer``: the writer's sections (``writer.py``), code text when absent."""
+    fx = fx or {}
     p = state.get("protocol") or {}
     syn = state.get("synthesis") or {}
     pc = state.get("prisma_counts") or {}
     c = flow_counts(pc, p)
     methods = "; ".join(f"{g['id']} {g['method']}" for g in syn.get("outcomes", []))
     main = next((g for g in syn.get("outcomes", []) if g.get("meta")), None)
-    qa = state.get("qa_report") or {}
+    sec = (writer or {}).get("sections") or {}
+    name = p.get("checklist_name") or "review's own instrument"
+    tool = ("the " + name[:1].lower() + name[1:]) if p.get(
+        "checklist_domains") else "RoB 2, ROBINS-I, QUADAS-2 or a checklist, by design"
+    synth = ("narrative synthesis with an evidence map (no pooling)"
+             if p.get("extraction_fields") else f"synthesis by outcome ({methods or 'none'})")
     abstract = [
-        f"**Question.** {p.get('question', '')}",
-        f"**Methods.** PRISMA 2020 review run by LLM agents with code checks; databases "
-        f"{', '.join(p.get('databases') or [])}; designs "
-        f"{', '.join(p.get('study_designs') or []) or 'not restricted'}.",
-        f"**Results.** {c['identification']['n']} records identified, {c['screened']['n']} "
-        f"screened, {c['included']['n']} studies included. Synthesis: {methods or 'none'}."
-        + (f" {main['id']}: " + pooled_sentence(main["meta"], brief=True) if main else ""),
-        f"**Quality check.** Critic {'passed' if qa.get('passed') else 'not passed'} "
-        f"({qa.get('blockers', 0)} blockers, {qa.get('warnings', 0)} warnings).",
+        f"**Background.** {sec.get('abstract_background') or p.get('question', '')}",
+        f"**Methods.** We searched {_dbs(p)} "
+        f"({_years(p.get('years') or {})}). LLM agents screened titles, abstracts and "
+        "full texts against pre-specified criteria (two screeners and an adjudicator, every "
+        "exclusion backed by a verified quote), extracted data with verified quotes and "
+        f"assessed risk of bias with {tool}; {synth}.",
+        f"**Results.** {sec.get('abstract_results') or ''}".rstrip()
+        + ("" if sec.get("abstract_results") else
+           f" {c['identification']['n']} records identified, {c['screened']['n']} screened, "
+           f"{c['included']['n']} studies included."
+           + (f" {main['id']}: " + pooled_sentence(main["meta"], brief=True) if main else "")),
+        f"**Conclusions.** {sec.get('abstract_conclusion') or ''}".rstrip(),
     ]
-    oids = ", ".join(o for _, o in outcomes(p))
-    parts = [f"# {p.get('title') or p.get('question', 'Systematic review')}", "",
-             f"*Systematic review report, run {summary.get('run_id') or ''}. Outcomes: "
-             f"{oids}.*", "", "## Abstract", "", "\n\n".join(abstract), "",
-             *_methods(state, models), "", *_results(state, base, prisma_png), "",
-             *_qa(state), "", *_limitations(state), "", "## Run summary", "",
-             summary_markdown(summary), "", *_references(state), ""]
+    abstract = [a for a in abstract if not a.endswith("**")]
+    ai = [k for k, v in ((writer or {}).get("source") or {}).items() if v == "ai"]
+    byline = ("*Draft systematic review produced by an agentic AI pipeline (PRISMA 2020 "
+              "structure). A reviewer must check it before use."
+              + (" The Introduction, Discussion, Conclusions and parts of the abstract were "
+                 "drafted by an AI writer from the review's own tables; every number was "
+                 "checked by code (Appendix A).*" if ai else "*"))
+    intro = sec.get("introduction") or []
+    disc = sec.get("discussion") or []
+    concl = sec.get("conclusion") or ""
+    parts = [f"# {p.get('title') or p.get('question', 'Systematic review')}", "", byline, "",
+             "## Abstract", "", "\n\n".join(abstract), ""]
+    if intro:
+        parts += ["## Introduction", "", *_paras(intro), ""]
+    parts += [*_methods(state, models, fx.get("spec")), "",
+              *_results(state, base, prisma_png, fx), ""]
+    parts += ["## Discussion", "", *(_paras(disc) + [""] if disc else []),
+              *_limitations(state), ""]
+    if concl:
+        parts += ["## Conclusions", "", concl, ""]
+    parts += [*_other_information(), "", *_references(state), "",
+              *_appendix(state, models, summary, writer), "", *_rob_per_study(state), ""]
     return "\n".join(parts)

@@ -311,11 +311,13 @@ def run(cfg: Config, *, question: str | None, topic_id: str | None, auto: bool,
     return run_id, state
 
 
-def report_only(cfg: Config, run_id: str, out=print) -> dict:
-    """Part 9b: rebuild ``runs/<id>/report/`` from the run's saved ``state.json`` (code only,
-    no LLM call, $0), e.g. after a fix in the reporting code. The run's facts are kept:
-    models from run.json, finish time and embedding cost from the previous run summary.
-    Appends one audit entry. Returns the report's file map."""
+def report_only(cfg: Config, run_id: str, out=print, llm=None) -> dict:
+    """Part 9b: rebuild ``runs/<id>/report/`` from the run's saved ``state.json``, e.g. after
+    a fix in the reporting code. Code only ($0) unless ``llm`` is given (``--ai-text``,
+    Part 11f): then one writer call drafts the Introduction, Discussion and Conclusions; its
+    usage is in ``report/writer.json`` and the audit entry, never in the run summary. The
+    run's facts are kept: models from run.json, finish time and embedding cost from the
+    previous run summary. Appends one audit entry. Returns the report's file map."""
     run_dir = cfg.runs_dir / run_id
     state_file = run_dir / "state.json"
     if not state_file.exists():
@@ -328,11 +330,14 @@ def report_only(cfg: Config, run_id: str, out=print) -> dict:
     meta = json.loads(meta_file.read_text()) if meta_file.exists() else {}
     prev = json.loads(prev_file.read_text()) if prev_file.exists() else None
     update = make_report(run_dir / "report", models=meta.get("models") or agent_models(cfg),
-                         previous_summary=prev)(state)
+                         previous_summary=prev, llm=llm)(state)
     rep = update["report"]
     entry = {"node": "report", "event": "report re-rendered (--report-only)",
              "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
              "files": sorted(rep["files"]), "prisma_consistent": rep["prisma_consistent"]}
+    writer = json.loads((run_dir / "report" / "writer.json").read_text())
+    if writer.get("usage"):        # the re-render's own writer call, kept apart from the run
+        entry["writer_usage"] = writer["usage"]
     with (run_dir / "audit.jsonl").open("a") as f:
         f.write(json.dumps(entry) + "\n")
     out(f"Report of run {run_id} rebuilt in {rep['folder']} (PRISMA counts "
@@ -380,15 +385,20 @@ def main(argv: list[str] | None = None) -> int:
                          "(raise it to continue; default: no cap)")
     ap.add_argument("--report-only", metavar="RUN_ID",
                     help="rebuild runs/RUN_ID/report/ from the saved state (no LLM call)")
+    ap.add_argument("--ai-text", action="store_true",
+                    help="with --report-only: one writer call drafts the Introduction, "
+                         "Discussion and Conclusions (about $0.001, checked by code)")
     args = ap.parse_args(argv)
 
+    if args.ai_text and not args.report_only:
+        ap.error("--ai-text goes with --report-only (a full run always uses the writer)")
     if args.report_only:
         if args.question or args.topic or args.auto or args.resume or args.limit is not None \
                 or args.budget is not None:
             ap.error("--report-only takes only a run id (and --config)")
         cfg = load_config(args.config)
         try:
-            report_only(cfg, args.report_only)
+            report_only(cfg, args.report_only, llm=cfg.make_llm() if args.ai_text else None)
         except (FileNotFoundError, ValueError) as exc:
             print(exc, file=sys.stderr)
             return 1

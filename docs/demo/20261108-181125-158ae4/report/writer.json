@@ -1,0 +1,35 @@
+{
+  "facts": "Question: Which lightweight machine-learning models detect abnormal versus normal ECG on resource-constrained devices (microcontroller, wearable, smartphone, FPGA), and how accurate and efficient are they?\nDatabases: OpenAlex, PubMed; years: 2021 onward.\nRecords identified: 618; duplicates removed: 63; screened on title and abstract: 98 (the 100 most relevant; 455 less relevant records were not screened); full texts sought: 70; included studies: 55.\nIncluded studies judged on the abstract only (no open-access full text): 39 of 55.\nPrior systematic reviews on this question: none (new review; no published systematic review asks this, searched 2026-11-08).\nSummary of findings:\n- 55 studies were included; 39 of them were assessed on the abstract only (no open-access full text).\n- Most frequent model and device combinations: Convolutional network (CNN) on Wearable (unspecified hardware) (4 studies); Convolutional network (CNN) on Microcontroller (3 studies); Convolutional network (CNN) on Single-board computer (2 studies).\n- Dataset named in 29 studies: MIT-BIH Arrhythmia 23, Other 4, PhysioNet/CinC 2017 1, Chapman / Shaoxing 1.\n- Train/test split stated in 7 studies: inter-patient 4, other wording 2, intra-patient / random 1.\n- An accuracy figure is reported by 16 studies (S2, S3, S5, S8, S11, S13, S23, S29, S30, S35, S39, S48, S49, S53, S54, S55); the figures range from 82% to 99.1%. They are not comparable: datasets, train/test splits and class sets differ.\n- Efficiency measured with a number: latency 8, power / energy 6, memory 8, parameters 8, operations 3 of 55 studies.\n- Risk of bias (overall): unclear 46, high 9.\nRisk of bias, overall: unclear 46, high 9.\nLimitations of this review:\n- Databases searched: OpenAlex, PubMed only (free sources); reviews that also search Embase, Cochrane or Scopus may find studies these do not index.\n- Screening limit: only the 100 best-ranked of 555 unique records were screened; relevant studies among the other 455 were not considered.\n- 39 of 55 included studies had no open-access full text and were screened and extracted from the abstract only (S1, S3, S4, S5, S7, S8, S9, S10, S13, S14, S15, S17, S18, S19, S21, S22, S25, S26, S27, S28, S29, S30, S31, S32, S33, S34, S35, S37, S41, S42, S44, S46, S47, S48, S49, S50, S52, S53, S55, marked \u2020).\n- Extraction values need a verified quote: correct values paraphrased by the model are refused and reported as `not reported` (conservative, lowers completeness).\n- Risk of bias used the review's own instrument; a domain without a verified quote is scored unclear, so 'unclear' often means 'not reported in the text read'.\n- Screening, extraction and synthesis are done by LLM agents with code checks; a human checked only the steps where the run paused for approval.",
+  "sections": {
+    "abstract_background": "The detection of abnormal versus normal ECG using lightweight machine-learning models on resource-constrained devices is crucial for advancing portable health monitoring technologies. This review aims to systematically evaluate the available studies on this topic to determine the models' accuracy and efficiency.",
+    "abstract_results": "A total of 55 studies were included, with 39 assessed solely on their abstracts. The accuracy of the models reported ranged from 82% to 99.1%, while efficiency metrics were evaluated in terms of latency, power, memory, and operations across various studies.",
+    "abstract_conclusion": "The findings highlight a significant reliance on abstract assessments, which may limit the comprehensiveness of the review. Further research with full-text evaluations is necessary to enhance the understanding of model performance in this domain.",
+    "introduction": [
+      "The increasing prevalence of cardiovascular diseases necessitates effective monitoring solutions, particularly in resource-constrained environments. Lightweight machine-learning models have emerged as promising tools for detecting abnormal ECG signals on devices such as microcontrollers, wearables, smartphones, and FPGAs, which are essential for real-time health monitoring.",
+      "Despite the potential of these models, there is a lack of systematic reviews that comprehensively assess their performance in terms of accuracy and efficiency. This review aims to fill this gap by evaluating the existing literature on lightweight machine-learning models for ECG detection, focusing on their application in resource-constrained devices."
+    ],
+    "discussion": [
+      "The review identified 55 studies that explored various lightweight machine-learning models for ECG detection, with a notable emphasis on convolutional networks across different devices. The reported accuracy figures, ranging from 82% to 99.1%, indicate a wide variability in model performance, influenced by differing datasets, train/test splits, and class sets, which complicates direct comparisons between studies.",
+      "A significant limitation of this review is the high number of studies (39 out of 55) that were assessed based solely on abstracts, which raises concerns about the completeness and reliability of the extracted data. Additionally, the overall risk of bias was deemed unclear for 46 studies, suggesting that many findings may lack robust validation due to insufficient reporting in the available texts.",
+      "Future research should aim to include full-text evaluations to provide a more comprehensive understanding of model performance. Furthermore, expanding the search to include additional databases could uncover relevant studies that were not indexed in the current review, thereby enriching the evidence base for lightweight machine-learning models in ECG detection."
+    ],
+    "conclusion": "This systematic review highlights the potential of lightweight machine-learning models for ECG detection on resource-constrained devices, while also revealing significant limitations in the current literature. Enhanced research efforts are needed to validate these findings and improve the reliability of model assessments."
+  },
+  "source": {
+    "abstract_background": "ai",
+    "abstract_results": "ai",
+    "abstract_conclusion": "ai",
+    "introduction": "ai",
+    "discussion": "ai",
+    "conclusion": "ai"
+  },
+  "flags": {},
+  "usage": {
+    "model": "gpt-4o-mini",
+    "input_tokens": 1356,
+    "output_tokens": 529,
+    "cost_usd": 0.0,
+    "cached": true
+  },
+  "error": null
+}

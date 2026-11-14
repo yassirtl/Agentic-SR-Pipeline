@@ -48,7 +48,8 @@ CHECKS = [
 
 DEMO_FILES = ["run.json", "audit.jsonl"]
 REPORT_FILES = ["prisma_flow.png", "manuscript.md", "manuscript.docx", "references.bib",
-                "protocol.json", "prisma_counts.json", "run_summary.json"]
+                "protocol.json", "prisma_counts.json", "run_summary.json", "evidence_map.png",
+                "writer.json", "findings.json"]
 
 
 # --- Demo snapshot ----------------------------------------------------------------------
@@ -74,6 +75,12 @@ def build_demo(run_dir: Path, out: Path | None = None) -> Path:
     (out / "report" / "tables").mkdir(parents=True)
     for name in DEMO_FILES:
         _copy(run_dir / name, out / name)
+    # The replay shows the run as it happened: report re-renders (--report-only, added to
+    # the audit later) are not part of it.
+    log = out / "audit.jsonl"
+    kept = [x for x in log.read_text().splitlines()
+            if x.strip() and "--report-only" not in json.loads(x).get("event", "")]
+    log.write_text("\n".join(kept) + "\n")
     for name in REPORT_FILES:
         if (run_dir / "report" / name).exists():
             _copy(run_dir / "report" / name, out / "report" / name)
@@ -155,6 +162,9 @@ def results_from_state(state: dict, run_dir: Path) -> dict:
         "question": state.get("question") or summary.get("question"),
         "found": ident.get("identified"), "unique": ident.get("records_screened"),
         "screened": ta.get("records_screened"), "not_screened": ta.get("not_screened"),
+        "by_rule": (ta.get("title_rule") or 0) + (ta.get("arxiv_rule") or 0),
+        "read": (ta.get("records_screened") or 0) - (ta.get("title_rule") or 0)
+                - (ta.get("arxiv_rule") or 0),
         "ta_kept": ta.get("included"), "sought": ft.get("reports_sought"),
         "full_text_read": ft.get("reports_assessed"),
         "abstract_only": ft.get("screened_on_abstract_only"),
@@ -175,10 +185,17 @@ def results(run_dir: Path) -> dict | None:
     return results_from_state(json.loads((run_dir / "state.json").read_text()), run_dir)
 
 
+def findings(run_dir: Path) -> dict | None:
+    """Summary of findings and evidence map of a run (report/findings.json), if any."""
+    data = _json(run_dir / "report" / "findings.json")
+    return data or None
+
+
 def report_files(run_dir: Path) -> list[Path]:
     """Report files a person would download, most useful first."""
     rep = run_dir / "report"
-    order = ["manuscript.docx", "manuscript.md", "prisma_flow.png", "references.bib"]
+    order = ["manuscript.docx", "manuscript.md", "prisma_flow.png", "evidence_map.png",
+             "references.bib"]
     files = [rep / n for n in order if (rep / n).exists()]
     return files + sorted((rep / "tables").glob("*.csv"))
 
@@ -231,7 +248,10 @@ def step_lines(audit: list[dict], running: str | None, done: set[str]) -> list[d
                 text = (f"{_n(e.get('identified'))} papers found · "
                         f"{_n(e.get('records_screened'))} after removing duplicates")
             elif s == "ta_screening":
-                text = f"{_n(e.get('records_screened'))} read · {_n(e.get('included'))} kept"
+                rule = (e.get("title_rule") or 0) + (e.get("arxiv_rule") or 0)
+                read = (e.get("records_screened") or 0) - rule
+                text = (f"{_n(read)} read" + (f" ({rule} removed first by a rule)" if rule
+                                               else "") + f" · {_n(e.get('included'))} kept")
                 if e.get("unresolved"):
                     text += f" · {e['unresolved']} undecided (settled next)"
             elif s == "ft_screening":

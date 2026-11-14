@@ -1,0 +1,168 @@
+{
+  "summary": [
+    "55 studies were included; 39 of them were assessed on the abstract only (no open-access full text).",
+    "Most frequent model and device combinations: Convolutional network (CNN) on Wearable (unspecified hardware) (4 studies); Convolutional network (CNN) on Microcontroller (3 studies); Convolutional network (CNN) on Single-board computer (2 studies).",
+    "Dataset named in 29 studies: MIT-BIH Arrhythmia 23, Other 4, PhysioNet/CinC 2017 1, Chapman / Shaoxing 1.",
+    "Train/test split stated in 7 studies: inter-patient 4, other wording 2, intra-patient / random 1.",
+    "An accuracy figure is reported by 16 studies (S2, S3, S5, S8, S11, S13, S23, S29, S30, S35, S39, S48, S49, S53, S54, S55); the figures range from 82% to 99.1%. They are not comparable: datasets, train/test splits and class sets differ.",
+    "Efficiency measured with a number: latency 8, power / energy 6, memory 8, parameters 8, operations 3 of 55 studies.",
+    "Risk of bias (overall): unclear 46, high 9."
+  ],
+  "evidence_map": {
+    "row_label": "Model family",
+    "col_label": "Device",
+    "rows": [
+      "Spiking neural network",
+      "Convolutional network (CNN)",
+      "Transformer / state-space",
+      "Classical ML (SVM, trees, kNN)",
+      "Other neural network",
+      "Other",
+      "Not reported"
+    ],
+    "cols": [
+      "Microcontroller",
+      "FPGA",
+      "ASIC / processor / SoC",
+      "Smartphone",
+      "Single-board computer",
+      "Wearable (unspecified hardware)",
+      "Edge / embedded (unspecified)",
+      "Not reported"
+    ],
+    "cells": {
+      "Not reported|Wearable (unspecified hardware)": [
+        "S1"
+      ],
+      "Convolutional network (CNN)|Single-board computer": [
+        "S2",
+        "S5"
+      ],
+      "Spiking neural network|ASIC / processor / SoC": [
+        "S3"
+      ],
+      "Not reported|Not reported": [
+        "S4",
+        "S34",
+        "S48"
+      ],
+      "Not reported|ASIC / processor / SoC": [
+        "S6"
+      ],
+      "Other neural network|Microcontroller": [
+        "S7",
+        "S11"
+      ],
+      "Other neural network|ASIC / processor / SoC": [
+        "S8"
+      ],
+      "Other neural network|Not reported": [
+        "S9",
+        "S22",
+        "S44"
+      ],
+      "Spiking neural network|Edge / embedded (unspecified)": [
+        "S10",
+        "S45"
+      ],
+      "Not reported|FPGA": [
+        "S12"
+      ],
+      "Classical ML (SVM, trees, kNN)|Wearable (unspecified hardware)": [
+        "S13",
+        "S41"
+      ],
+      "Convolutional network (CNN)|Wearable (unspecified hardware)": [
+        "S14",
+        "S33",
+        "S39",
+        "S42"
+      ],
+      "Convolutional network (CNN)|FPGA": [
+        "S15",
+        "S28"
+      ],
+      "Convolutional network (CNN)|Microcontroller": [
+        "S16",
+        "S30",
+        "S38"
+      ],
+      "Other neural network|Edge / embedded (unspecified)": [
+        "S17",
+        "S21",
+        "S23"
+      ],
+      "Spiking neural network|Not reported": [
+        "S18",
+        "S25"
+      ],
+      "Convolutional network (CNN)|Edge / embedded (unspecified)": [
+        "S19",
+        "S36"
+      ],
+      "Convolutional network (CNN)|ASIC / processor / SoC": [
+        "S20",
+        "S47"
+      ],
+      "Spiking neural network|FPGA": [
+        "S24"
+      ],
+      "Other neural network|Wearable (unspecified hardware)": [
+        "S26",
+        "S52"
+      ],
+      "Classical ML (SVM, trees, kNN)|FPGA": [
+        "S27"
+      ],
+      "Spiking neural network|Wearable (unspecified hardware)": [
+        "S29"
+      ],
+      "Classical ML (SVM, trees, kNN)|Not reported": [
+        "S31"
+      ],
+      "Not reported|Smartphone": [
+        "S32"
+      ],
+      "Convolutional network (CNN)|Smartphone": [
+        "S35",
+        "S51"
+      ],
+      "Transformer / state-space|Not reported": [
+        "S37"
+      ],
+      "Convolutional network (CNN)|Not reported": [
+        "S40",
+        "S50",
+        "S55"
+      ],
+      "Classical ML (SVM, trees, kNN)|Edge / embedded (unspecified)": [
+        "S43"
+      ],
+      "Classical ML (SVM, trees, kNN)|Microcontroller": [
+        "S46"
+      ],
+      "Transformer / state-space|Microcontroller": [
+        "S49"
+      ],
+      "Other|Smartphone": [
+        "S53",
+        "S54"
+      ]
+    },
+    "n": 55,
+    "sources": {
+      "rows": {
+        "none": 7,
+        "value": 36,
+        "title": 12
+      },
+      "cols": {
+        "value": 31,
+        "title": 11,
+        "none": 13
+      }
+    },
+    "row_field": "model",
+    "col_field": "platform"
+  }
+}

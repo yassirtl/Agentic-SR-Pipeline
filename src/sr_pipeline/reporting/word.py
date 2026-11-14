@@ -9,7 +9,10 @@ import re
 from pathlib import Path
 
 from docx import Document
+from docx.enum.section import WD_ORIENT, WD_SECTION
 from docx.shared import Inches, Pt
+
+WIDE = 8          # a table with this many columns or more gets its own landscape pages
 
 _INLINE = re.compile(r"(\*\*.+?\*\*|`[^`]+`|\*[^*\s][^*]*?\*)")
 _IMAGE = re.compile(r"^!\[(?P<alt>[^\]]*)\]\((?P<path>[^)]+)\)$")
@@ -34,9 +37,21 @@ def _cells(line: str) -> list[str]:
     return [c.strip() for c in line.strip().strip("|").split("|")]
 
 
+def _orient(doc, landscape: bool) -> None:
+    """Start a new section (new page) in landscape or portrait."""
+    sec = doc.add_section(WD_SECTION.NEW_PAGE)
+    w, h = sec.page_width, sec.page_height
+    if landscape != (w > h):
+        sec.page_width, sec.page_height = h, w
+    sec.orientation = WD_ORIENT.LANDSCAPE if landscape else WD_ORIENT.PORTRAIT
+
+
 def _table(doc, lines: list[str]) -> None:
     rows = [_cells(x) for x in lines if not re.fullmatch(r"\|?(\s*-+\s*\|)+\s*-*\s*", x.strip())]
     width = max(len(r) for r in rows)
+    wide = width >= WIDE
+    if wide:                                   # wide tables: landscape pages, then back
+        _orient(doc, True)
     table = doc.add_table(rows=len(rows), cols=width)
     table.style = "Table Grid"
     for i, row in enumerate(rows):
@@ -46,9 +61,11 @@ def _table(doc, lines: list[str]) -> None:
             par = cell.paragraphs[0]
             _runs(par, row[j] if j < len(row) else "")
             for run in par.runs:
-                run.font.size = Pt(8)
+                run.font.size = Pt(7 if wide else 8)
                 if i == 0:
                     run.bold = True
+    if wide:
+        _orient(doc, False)
 
 
 def markdown_to_docx(markdown: str, path: str | Path, *, base: str | Path) -> Path:
