@@ -266,7 +266,8 @@ def _methods(state: dict, models: dict[str, str], findings_spec: dict | None = N
     return out
 
 
-DB_NAMES = {"openalex": "OpenAlex", "pubmed": "PubMed", "arxiv": "arXiv"}
+DB_NAMES = {"openalex": "OpenAlex", "pubmed": "PubMed", "arxiv": "arXiv",
+            "semanticscholar": "Semantic Scholar"}
 
 
 def _dbs(p: dict) -> str:

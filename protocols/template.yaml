@@ -9,7 +9,7 @@
 # protocol before the search starts (skipped with --auto).
 
 # --- Scope ------------------------------------------------------------------
-databases: auto      # or a list, e.g. [openalex, pubmed, arxiv]
+databases: auto      # or a list, e.g. [openalex, pubmed, arxiv, semanticscholar]
 years:
   recent: 5          # last 5 years: start = end year (or this year) - 5
   # start: 2015      # explicit first publication year (wins over recent);

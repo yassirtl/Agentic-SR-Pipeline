@@ -22,7 +22,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-Database = Literal["openalex", "pubmed", "arxiv"]
+Database = Literal["openalex", "pubmed", "arxiv", "semanticscholar"]
 
 # Part 8b: which result gives a study's direction of effect, in this order (the first one
 # available is used). Pre-specified in the protocol, so it is not chosen after seeing the
@@ -179,7 +179,8 @@ class DatabaseChoice(BaseModel):
         min_length=1,
         description="Databases to search: openalex (all fields, always), pubmed (health, "
                     "medicine, life sciences), arxiv (computer science, physics, maths, "
-                    "statistics, quantitative fields).")
+                    "statistics, quantitative fields), semanticscholar (all fields, strong in "
+                    "computer science and engineering; a second broad index).")
     database_reason: str = Field(description="One line: why these databases.")
 
 

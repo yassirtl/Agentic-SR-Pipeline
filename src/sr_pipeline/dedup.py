@@ -50,7 +50,7 @@ from rapidfuzz.process import cdist
 
 TITLE_THRESHOLD = 95
 MIN_TITLE_WORDS = 4
-SOURCE_PRIORITY = {"pubmed": 0, "openalex": 1, "arxiv": 2}
+SOURCE_PRIORITY = {"pubmed": 0, "openalex": 1, "semanticscholar": 2, "arxiv": 3}
 ID_RULES = ("id", "doi", "pmid", "pmcid")  # "id": a database returned one record twice
 NOTICE = re.compile(r"^(correction|corrigendum|erratum|retraction|retracted|reply|response"
                     r"|comment|expression of concern)\b")

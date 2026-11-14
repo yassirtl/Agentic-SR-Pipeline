@@ -585,7 +585,7 @@ def page_estimator() -> None:
                       help="Shown for reference: the estimate depends on the limit and the models.")
         topics = sorted({r.topic for r in finished if r.topic})
         topic = st.selectbox("Similar topic (picks the source runs)", ["all topics"] + topics)
-        st.multiselect("Databases", ["openalex", "pubmed", "arxiv"], default=["openalex", "pubmed"],
+        st.multiselect("Databases", ["openalex", "pubmed", "arxiv", "semanticscholar"], default=["openalex", "pubmed"],
                        help="With --limit, the number of records screened is capped; databases change "
                             "which records are found, not how many are screened.")
         limit = st.number_input("--limit (records screened)", min_value=10, max_value=10000,
@@ -906,7 +906,7 @@ def protocol_form(run_id: str, payload: dict, *, guided: bool = False) -> None:
             "Study designs (one per line, empty = no restriction)",
             "\n".join(map(L.form_text, p.get("study_designs") or []))))
         c1, c2, c3 = st.columns(3)
-        edited["databases"] = c1.multiselect("Databases", ["openalex", "pubmed", "arxiv"],
+        edited["databases"] = c1.multiselect("Databases", ["openalex", "pubmed", "arxiv", "semanticscholar"],
                                              default=p.get("databases") or [])
         start = c2.number_input("From year (0 = none)", 0, 2100, years.get("start") or 0)
         end = c3.number_input("To year (0 = none)", 0, 2100, years.get("end") or 0)

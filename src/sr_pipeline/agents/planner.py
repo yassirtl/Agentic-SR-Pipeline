@@ -76,7 +76,9 @@ def choose_designs(question: str, template: Template, drafted: list[str]
 DATABASE_RULE = (
     "- Choose the databases: openalex always (all disciplines); add pubmed for health, "
     "medicine, psychology or life-science questions; add arxiv for computer science, "
-    "physics, mathematics, statistics or other quantitative fields. Give a one-line reason.\n"
+    "physics, mathematics, statistics or other quantitative fields; add semanticscholar "
+    "for computer-science or engineering questions that need a second broad index. Give a "
+    "one-line reason.\n"
 )
 
 

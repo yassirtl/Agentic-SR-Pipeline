@@ -16,11 +16,13 @@ from .base import Concept, Record, SearchResult, Source
 from .http import HttpClient, HttpError
 from .openalex import OpenAlexSource
 from .pubmed import PubMedSource
+from .semanticscholar import SemanticScholarSource
 
 SOURCES: dict[str, type[Source]] = {
     "openalex": OpenAlexSource,
     "pubmed": PubMedSource,
     "arxiv": ArxivSource,
+    "semanticscholar": SemanticScholarSource,
 }
 API_KEY_ENV = {"openalex": "OPENALEX_API_KEY", "pubmed": "NCBI_API_KEY"}
 
@@ -29,7 +31,7 @@ def make_source(name: str, http: HttpClient, *, contact_email: str | None = None
                 env: Mapping[str, str] | None = None) -> Source:
     env = os.environ if env is None else env
     cls = SOURCES[name]
-    if name == "arxiv":
+    if name in ("arxiv", "semanticscholar"):     # no key needed (Semantic Scholar: shared rate)
         return cls(http)
     return cls(http, contact_email=contact_email, api_key=env.get(API_KEY_ENV[name]) or None)
 

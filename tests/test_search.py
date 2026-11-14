@@ -25,6 +25,7 @@ from sr_pipeline.sources.base import normalize_doi
 from sr_pipeline.sources.http import cache_key
 from sr_pipeline.sources.openalex import OpenAlexSource, rebuild_abstract
 from sr_pipeline.sources.pubmed import PubMedSource
+from sr_pipeline.sources.semanticscholar import SemanticScholarSource
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests" / "fixtures" / "sources"
@@ -81,6 +82,7 @@ CONNECTORS = {
     "openalex": lambda http: OpenAlexSource(http, per_page=2),
     "pubmed": lambda http: PubMedSource(http),
     "arxiv": lambda http: ArxivSource(http, page_size=2),
+    "semanticscholar": lambda http: SemanticScholarSource(http),
 }
 
 
