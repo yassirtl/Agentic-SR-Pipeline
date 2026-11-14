@@ -24,7 +24,8 @@ from ..guardrail import STAGES
 ROOT = SC.CHECKS_DIR.parents[1]                 # project root (evaluation/stage_checks -> ..)
 DEMO_DIR = ROOT / "docs" / "demo"
 
-STEPS = ["Question", "Approve the plan", "AI at work", "Results", "Check accuracy"]
+STEPS = ["Question", "Approve the plan", "AI at work", "Results", "Check accuracy",
+         "Your review article"]
 
 PLAIN = {   # stage -> what it does, in plain words
     "planner": "Write the plan (which papers count)",
@@ -321,6 +322,19 @@ def unfinished_ui_runs(runs_dir: Path) -> list[Path]:
                 and not (d / "report" / "run_summary.json").exists()):
             out.append(d)
     return out
+
+
+def article_parts(text: str) -> list[tuple[str, str]]:
+    """The manuscript split around its images: [("md", text), ("img", file name), ...], so
+    the page can show the PRISMA diagram from the report folder (Markdown alone cannot)."""
+    import re
+    parts, pos = [], 0
+    for m in re.finditer(r"!\[[^\]]*\]\(([^)\s]+)\)", text):
+        parts.append(("md", text[pos:m.start()]))
+        parts.append(("img", m.group(1)))
+        pos = m.end()
+    parts.append(("md", text[pos:]))
+    return [(k, v) for k, v in parts if v.strip()]
 
 
 def next_unmarked(rows: list[dict]) -> int:

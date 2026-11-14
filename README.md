@@ -100,13 +100,14 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 .venv/bin/sr-ui                # opens http://localhost:8501 in the browser (Ctrl+C to stop)
 ```
 
-The home page has two buttons. Both lead through the same five steps, with a step bar at the top, one sentence saying what to do and one main button on every screen:
+The home page has two buttons. Both lead through the same six steps, with a step bar at the top, one sentence saying what to do and one main button on every screen:
 
-1. **Question** · 2. **Approve the plan** · 3. **AI at work** · 4. **Results** · 5. **Check accuracy**
+1. **Question** · 2. **Approve the plan** · 3. **AI at work** · 4. **Results** · 5. **Check accuracy** (optional) · 6. **Your review article**
 
 - **Watch a demo** (free, about 3 minutes): a replay of the finished T2 review from `docs/demo/` (tracked, so it works on a fresh clone). The nine stages tick off with the run's real numbers, the replay stops once on a real disagreement as a practice question, and the accuracy step lets you mark 10 examples per check. No API call; practice marks go to a temporary folder, never into the project.
 - **Start a new review** (real, billed): pick an example topic or type your question, choose 100 papers (about $0.50, 15 min), 500 (about $2.50) or all, and press Start. You approve the plan (keep / throw-out rules; more settings folded), settle the papers the AI could not decide, and get the results and the report to download. A budget cap (default 1.5 × the high estimate, under Options) pauses the run safely between stages; the home page offers to continue an unfinished review, even after the browser was closed.
-- **Check accuracy**: 10 random items for title/abstract screening, full-text screening and extraction, one card at a time (the AI's decision or value, the quote, the passage) with Correct / Wrong / Not sure. Marks are saved at once to `evaluation/stage_checks/<run_id>/<stage>.csv`, and `python -m sr_pipeline.evaluation evaluate RUN` adds the share correct with a Wilson 95% interval to the evaluation. The check is not blind (you see the AI's answer).
+- **Your review article** (the end of the path): the full manuscript the pipeline wrote (abstract, methods, PRISMA diagram, results, risk of bias, synthesis, limitations, included studies), shown in the page with **Download as Word** (to edit), Markdown, and the diagram, references and tables. It is a draft for a person to check.
+- **Check accuracy** (optional, can be skipped): 10 random items for title/abstract screening, full-text screening and extraction, one card at a time (the AI's decision or value, the quote, the passage) with Correct / Wrong / Not sure. Marks are saved at once to `evaluation/stage_checks/<run_id>/<stage>.csv`, and `python -m sr_pipeline.evaluation evaluate RUN` adds the share correct with a Wilson 95% interval to the evaluation. The check is not blind (you see the AI's answer).
 
 **Advanced tools** (left menu), for the details:
 

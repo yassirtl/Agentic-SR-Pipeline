@@ -149,7 +149,13 @@ def test_demo_runs_start_to_end_by_its_main_buttons(tmp_path, monkeypatch):
             at = click(at, f"ok_{stage}_{i}")
         assert any("Check finished: 10 of 10" in s.value for s in at.success)
         at = click(at, f"next_{stage}")
-    assert any("All done" in s.value for s in at.success)
+    assert any("Checks done" in s.value for s in at.success)
+    # Last step: the review article, shown in the page with its downloads.
+    at = click(at, "to_article")
+    assert any("Your review article" in s.value for s in at.subheader)
+    assert any("Lightweight Machine-Learning Models for ECG Classification" in m.value
+               for m in at.markdown)
+    assert at.get("download_button")
     # Nothing tracked was written: practice marks went to the scratch folder.
     assert {p: p.read_bytes() for p in SC.CHECKS_DIR.rglob("*") if p.is_file()} == tracked
     assert {p: p.read_bytes() for p in DEMO.rglob("*") if p.is_file()} == demo_files
@@ -231,6 +237,10 @@ def test_real_run_start_plan_disagreement_results_check(ui):
     at = click(at, "ok_ta_0")
     rows = SC.load_check(rid, "ta", ui.runs_dir.parent / "checks")["rows"]
     assert rows[0]["mark"] == "correct"
+    # Skip the rest of the checks: the article of this run is the last step.
+    at = click(at, "skip_all_ta")
+    assert any("Your review article" in s.value for s in at.subheader)
+    assert not at.exception
 
 
 def test_stopped_real_run_shows_a_continue_button(ui):
@@ -321,3 +331,17 @@ def test_guided_plan_form_untouched_sends_true(ui, monkeypatch, name):
     assert any("Keep papers that" in a.label for a in at.text_area)
     submit(at)
     assert sent["kind"] == "protocol_approval" and sent["answer"] is True
+
+
+def test_article_parts_split_around_images():
+    parts = F.article_parts("# T\n\ntext\n\n![PRISMA 2020 flow diagram](prisma_flow.png)\n\n## R\n")
+    assert [k for k, _ in parts] == ["md", "img", "md"] and parts[1][1] == "prisma_flow.png"
+
+
+def test_results_can_skip_straight_to_the_article(tmp_path, monkeypatch):
+    from sr_pipeline.ui import guide as G
+    monkeypatch.setattr(G, "DEMO_CHECKS", tmp_path)
+    at = guide(flow_mode="demo", flow_step=4)
+    at = click(at, "skip_to_article")
+    assert at.session_state["flow_step"] == 6
+    assert any("Your review article" in s.value for s in at.subheader)

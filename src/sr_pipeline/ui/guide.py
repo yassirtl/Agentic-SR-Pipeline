@@ -124,7 +124,7 @@ def read_url() -> None:
     if "flow_mode" not in st.session_state and qp.get("mode") in ("demo", "real"):
         st.session_state["flow_mode"] = qp["mode"]
         if qp.get("mode") == "demo" and str(qp.get("step", "")).isdigit():
-            st.session_state["flow_step"] = max(1, min(5, int(qp["step"])))
+            st.session_state["flow_step"] = max(1, min(len(F.STEPS), int(qp["step"])))
         if qp.get("mode") == "real" and qp.get("run"):
             st.session_state["flow_run"] = qp["run"]
 
@@ -261,8 +261,10 @@ def demo_flow() -> None:
         demo_work(run, snap)
     elif step == 4:
         results_screen(run, res, demo=True)
-    else:
+    elif step == 5:
         checks_screen(run.name, demo_checks_root(), demo=True, run_dir=run)
+    else:
+        article_screen(run, demo=True)
 
 
 def plan_card(p: dict) -> None:
@@ -393,8 +395,8 @@ def real_flow() -> None:
     run_dir = P.runs_dir() / rid
     v = D.live_view(run_dir, alive=L.is_alive(rid))
     step = F.real_step(v.status, v.pending, D.read_audit(run_dir), bool(v.meta.get("auto")))
-    if step == 4 and st.session_state.get("flow_step") == 5:
-        step = 5
+    if step == 4 and st.session_state.get("flow_step") in (5, 6):
+        step = st.session_state["flow_step"]
     stepper(step)
     if step == 2:
         real_plan(rid, v)
@@ -406,8 +408,10 @@ def real_flow() -> None:
             st.error("The run finished but its results file is missing.")
             return
         results_screen(run_dir, res, demo=False)
-    else:
+    elif step == 5:
         checks_screen(rid, P.checks_dir(), demo=False, run_dir=run_dir)
+    else:
+        article_screen(run_dir, demo=False)
 
 
 TOPIC_NAMES = {"T1": "Smartwatches that detect heart rhythm problems",
@@ -548,8 +552,8 @@ def real_work(rid: str, v: D.LiveView) -> None:
 
 def results_screen(run_dir: Path, r: dict, *, demo: bool) -> None:
     st.subheader("Step 4 · Results")
-    todo("Here is what the review found. Download the report, or press <b>Check the AI's "
-         "accuracy</b>.")
+    todo("Here is what the review found. Next, check the AI's work on a few examples "
+         "(optional), then read the review article it wrote.")
     st.markdown(f'<div class="hero"><div class="eyebrow">Question</div>'
                 f'<div class="q" style="font-size:19px">{e(r.get("question") or "")}</div>'
                 f'<div class="meta">Finished in {r.get("minutes", 0):.0f} minutes · cost '
@@ -572,9 +576,8 @@ def results_screen(run_dir: Path, r: dict, *, demo: bool) -> None:
     if back := (3 if demo else None):
         if c1.button("← Back", key="back_to_checks", width="stretch"):
             go(flow_step=back)
-    if docx:
-        c2.download_button("⬇ Download the report", docx.read_bytes(), file_name=docx.name,
-                           key="dl_main", width="stretch")
+    if c2.button("Skip to the article", key="skip_to_article", width="stretch"):
+        go(flow_step=6)
     if c3.button("Check the AI's accuracy →", key="to_checks", type="primary", width="stretch"):
         go(flow_step=5, chk_idx=0, chk_item=None)
     kept = r.get("kept") or []
@@ -608,7 +611,10 @@ def checks_screen(run_id: str, root: Path, *, demo: bool, run_dir: Path) -> None
         all_done(run_id, root, demo)
         return
     stage, question = F.CHECKS[idx]
-    st.markdown(f"**Check {idx + 1} of {len(F.CHECKS)}** · {question}")
+    c1, c2 = st.columns([3, 1])
+    c1.markdown(f"**Check {idx + 1} of {len(F.CHECKS)}** · {question}")
+    if c2.button("Skip to the article →", key=f"skip_all_{stage}", width="stretch"):
+        go(flow_step=6)
     check = SC.load_check(run_id, stage, root)
     if check is None:
         todo("You will see 10 random examples of the AI's work, one at a time, and say if each "
@@ -697,7 +703,7 @@ def item_card(stage: str, r: dict, i: int, n: int) -> None:
 
 
 def all_done(run_id: str, root: Path, demo: bool) -> None:
-    st.success("✓ All done. This is the end of the review.")
+    st.success("✓ Checks done. Last step: the review article.")
     summary = SC.summarise(run_id, root)
     rows = [{"Check": v["name"], "Marked": f"{v['marked']} / {v['sampled']}",
              "Judged correct": f"{v['correct']} of {v['correct'] + v['wrong']}"
@@ -715,8 +721,49 @@ def all_done(run_id: str, root: Path, demo: bool) -> None:
     c1, _, c3 = st.columns([1, 2, 1])
     if c1.button("← Back to the checks", key="done_back", width="stretch"):
         go(chk_idx=0, chk_item=None)
-    if c3.button("Back to home", key="done_home", type="primary", width="stretch"):
-        reset_flow(None)
-        if "home" in P.PAGES:
-            st.switch_page(P.PAGES["home"])
-        st.rerun()
+    if c3.button("See the review article →", key="to_article", type="primary",
+                 width="stretch"):
+        go(flow_step=6)
+
+
+# --- The review article (both modes): the end of the path --------------------------------
+
+def article_screen(run_dir: Path, *, demo: bool) -> None:
+    st.subheader("Step 6 · Your review article")
+    md = run_dir / "report" / "manuscript.md"
+    if not md.exists():
+        st.error("The article file (report/manuscript.md) is missing for this review.")
+        return
+    st.success("✓ The review is complete. Below is the article the AI wrote.")
+    todo("Read it here, or press <b>Download as Word</b> to edit it. It is a draft: a person "
+         "must check it before it is used.")
+    files = F.report_files(run_dir)
+    docx = next((f for f in files if f.suffix == ".docx"), None)
+    c1, c2, c3 = st.columns(3)
+    if docx:
+        c1.download_button("⬇ Download as Word", docx.read_bytes(), file_name=docx.name,
+                           key="art_docx", type="primary", width="stretch")
+    c2.download_button("⬇ Download as Markdown", md.read_bytes(), file_name=md.name,
+                       key="art_md", width="stretch")
+    if c3.button("Back to home", key="art_home", width="stretch"):
+        go_home()
+    others = [f for f in files if f not in (docx, md)]
+    if others:
+        with st.expander("Other files: PRISMA diagram, references, tables"):
+            for f in others:
+                st.download_button(f"⬇ {f.name}", f.read_bytes(), file_name=f.name,
+                                   key=f"art_{f.name}")
+    with st.container(border=True):
+        for kind, value in F.article_parts(md.read_text()):
+            if kind == "md":
+                st.markdown(value)
+            elif (run_dir / "report" / value).exists():
+                st.image(str(run_dir / "report" / value))
+    nav(back=5, next_label="Back to home ✓", next_key="art_home_bottom", on_next=go_home)
+
+
+def go_home() -> None:
+    reset_flow(None)
+    if "home" in P.PAGES:
+        st.switch_page(P.PAGES["home"])
+    st.rerun()
