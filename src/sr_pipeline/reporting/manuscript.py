@@ -554,10 +554,42 @@ def _appendix(state: dict, models: dict[str, str], summary: dict, writer: dict |
     return out
 
 
-def _other_information() -> list[str]:
+def _amendments(state: dict) -> str:
+    """PRISMA 24c from the audit: what was changed at approval, and after it."""
+    approvals = [e for e in state.get("audit_log", []) if e.get("node") == "protocol_approval"]
+    if not approvals:
+        return ("The protocol was approved automatically, with no human edits, and was not "
+                "amended after approval.")
+    edits = approvals[-1].get("edits") or {}
+    if not edits:
+        return "The protocol was approved by a person as drafted and not amended afterwards."
+    return ("The protocol was edited at approval (" + ", ".join(sorted(edits)) + ") and not "
+            "amended afterwards.")
+
+
+def _excluded_full_text(state: dict) -> list[str]:
+    """PRISMA 16b: every report excluded at full text, with the criterion it failed."""
+    from ..agents.screening import criterion_labels
+    from ..state import latest
+    names = criterion_labels(state.get("protocol") or {})
+    rows = [{"t": d.get("title") or d["paper_id"], "c": f"{d.get('criterion')}"
+             + (f" ({names[d['criterion']]})" if d.get("criterion") in names else ""),
+             "u": "abstract only" if d.get("fulltext_status") == "abstract_only" else "full text"}
+            for d in latest(state.get("ft_decisions") or []) if d.get("final") == "exclude"]
+    if not rows:
+        return []
+    return ["## Appendix C. Studies excluded at full text", "",
+            f"The {len(rows)} reports that reached full-text screening and were excluded, with "
+            "the criterion they failed (the quote behind each decision is in "
+            "`tables/screening.csv`).", "",
+            md_table(rows, [("t", "Report"), ("c", "Criterion not met"), ("u", "Text read")])]
+
+
+def _other_information(state: dict | None = None) -> list[str]:
     return ["## Other information", "",
             "- **Registration and protocol.** Not registered. The protocol is published with "
-            "the review (`protocol.json`); where its criteria came from is in Appendix A.",
+            "the review (`protocol.json`); where its criteria came from is in Appendix A. "
+            "Amendments: " + _amendments(state or {}),
             "- **Support and competing interests.** [to be completed by the authors]",
             "- **Availability of data.** Evidence tables, extracted values with their "
             "quotes, screening decisions and the BibTeX file are published with the review "
@@ -685,7 +717,10 @@ def manuscript(state: dict, *, base: Path, models: dict[str, str], summary: dict
     intro = sec.get("introduction") or []
     disc = sec.get("discussion") or []
     concl = sec.get("conclusion") or ""
-    parts = [f"# {p.get('title') or p.get('question', 'Systematic review')}", "", byline, "",
+    title = p.get("title") or p.get("question", "Systematic review")
+    if "systematic review" not in title.lower():        # PRISMA item 1
+        title = f"{title.rstrip('.')}: a systematic review"
+    parts = [f"# {title}", "", byline, "",
              "## Abstract", "", "\n\n".join(abstract), ""]
     if intro:
         parts += ["## Introduction", "", *_paras(intro), ""]
@@ -701,6 +736,7 @@ def manuscript(state: dict, *, base: Path, models: dict[str, str], summary: dict
                   "", *_paras(agenda), ""]
     if concl:
         parts += ["## Conclusions", "", concl, ""]
-    parts += [*_other_information(), "", *_references(state), "",
-              *_appendix(state, models, summary, writer), "", *_rob_per_study(state), ""]
+    parts += [*_other_information(state), "", *_references(state), "",
+              *_appendix(state, models, summary, writer), "", *_rob_per_study(state), "",
+              *_excluded_full_text(state), ""]
     return "\n".join(parts)

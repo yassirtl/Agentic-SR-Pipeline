@@ -253,7 +253,7 @@ def e2e_config(tmp_path):
 INJECT = {"search": fake_search, "fetch": fake_fetch, "embedder": FakeEmbedder(), "http": None}
 
 REPORT_FILES = {"prisma_flow.png", "manuscript.md", "manuscript.docx", "references.bib",
-                "writer.json",
+                "writer.json", "prisma_checklist.json",
                 "run_summary.json", "prisma_counts.json", "protocol.json",
                 *(f"tables/{t}.csv" for t in ("studies", "extraction", "results",
                                               "risk_of_bias", "screening"))}

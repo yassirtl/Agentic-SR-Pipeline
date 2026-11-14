@@ -1,0 +1,304 @@
+{
+  "summary": {
+    "items": 42,
+    "reported": 30,
+    "partly": 4,
+    "not reported": 8
+  },
+  "items": [
+    {
+      "item": "1",
+      "section": "Title",
+      "topic": "Identify the report as a systematic review",
+      "status": "reported",
+      "where": "Title"
+    },
+    {
+      "item": "2",
+      "section": "Abstract",
+      "topic": "Structured abstract (PRISMA 2020 for Abstracts)",
+      "status": "reported",
+      "where": "Abstract"
+    },
+    {
+      "item": "3",
+      "section": "Introduction",
+      "topic": "Rationale",
+      "status": "reported",
+      "where": "Introduction"
+    },
+    {
+      "item": "4",
+      "section": "Introduction",
+      "topic": "Objectives or question",
+      "status": "reported",
+      "where": "Introduction"
+    },
+    {
+      "item": "5",
+      "section": "Methods",
+      "topic": "Eligibility criteria",
+      "status": "reported",
+      "where": "Protocol and eligibility criteria"
+    },
+    {
+      "item": "6",
+      "section": "Methods",
+      "topic": "Information sources and dates searched",
+      "status": "reported",
+      "where": "Information sources and search strategy"
+    },
+    {
+      "item": "7",
+      "section": "Methods",
+      "topic": "Full search strategies",
+      "status": "reported",
+      "where": "Information sources and search strategy"
+    },
+    {
+      "item": "8",
+      "section": "Methods",
+      "topic": "Selection process (reviewers, automation tools)",
+      "status": "reported",
+      "where": "Selection process"
+    },
+    {
+      "item": "9",
+      "section": "Methods",
+      "topic": "Data collection process",
+      "status": "reported",
+      "where": "Data collection and risk of bias"
+    },
+    {
+      "item": "10a",
+      "section": "Methods",
+      "topic": "Data items: outcomes",
+      "status": "reported",
+      "where": "Protocol and eligibility criteria"
+    },
+    {
+      "item": "10b",
+      "section": "Methods",
+      "topic": "Data items: other variables",
+      "status": "reported",
+      "where": "Data items"
+    },
+    {
+      "item": "11",
+      "section": "Methods",
+      "topic": "Study risk of bias assessment",
+      "status": "reported",
+      "where": "Data collection and risk of bias"
+    },
+    {
+      "item": "12",
+      "section": "Methods",
+      "topic": "Effect measures",
+      "status": "reported",
+      "where": "Synthesis methods"
+    },
+    {
+      "item": "13a",
+      "section": "Methods",
+      "topic": "Which studies were eligible for each synthesis",
+      "status": "partly",
+      "where": "Synthesis methods"
+    },
+    {
+      "item": "13b",
+      "section": "Methods",
+      "topic": "Data preparation for synthesis",
+      "status": "reported",
+      "where": "Synthesis methods"
+    },
+    {
+      "item": "13c",
+      "section": "Methods",
+      "topic": "Tabulation and visual display",
+      "status": "reported",
+      "where": "Synthesis methods"
+    },
+    {
+      "item": "13d",
+      "section": "Methods",
+      "topic": "Synthesis methods and rationale",
+      "status": "reported",
+      "where": "Synthesis methods"
+    },
+    {
+      "item": "13e",
+      "section": "Methods",
+      "topic": "Exploring causes of heterogeneity",
+      "status": "reported",
+      "where": "Synthesis methods"
+    },
+    {
+      "item": "13f",
+      "section": "Methods",
+      "topic": "Sensitivity analyses",
+      "status": "not reported",
+      "where": "not done by the pipeline"
+    },
+    {
+      "item": "14",
+      "section": "Methods",
+      "topic": "Reporting bias assessment",
+      "status": "not reported",
+      "where": "not done by the pipeline"
+    },
+    {
+      "item": "15",
+      "section": "Methods",
+      "topic": "Certainty assessment (e.g. GRADE)",
+      "status": "not reported",
+      "where": "not done by the pipeline"
+    },
+    {
+      "item": "16a",
+      "section": "Results",
+      "topic": "Study selection and flow diagram",
+      "status": "reported",
+      "where": "Study selection"
+    },
+    {
+      "item": "16b",
+      "section": "Results",
+      "topic": "Excluded studies that seemed to meet the criteria",
+      "status": "reported",
+      "where": "Appendix C (every full-text exclusion with its criterion)"
+    },
+    {
+      "item": "17",
+      "section": "Results",
+      "topic": "Study characteristics",
+      "status": "reported",
+      "where": "Study characteristics"
+    },
+    {
+      "item": "18",
+      "section": "Results",
+      "topic": "Risk of bias in studies",
+      "status": "reported",
+      "where": "Risk of bias"
+    },
+    {
+      "item": "19",
+      "section": "Results",
+      "topic": "Results of individual studies",
+      "status": "partly",
+      "where": "Study characteristics"
+    },
+    {
+      "item": "20a",
+      "section": "Results",
+      "topic": "Characteristics and risk of bias of each synthesis",
+      "status": "partly",
+      "where": "Synthesis of results"
+    },
+    {
+      "item": "20b",
+      "section": "Results",
+      "topic": "Results of syntheses",
+      "status": "reported",
+      "where": "Synthesis of results"
+    },
+    {
+      "item": "20c",
+      "section": "Results",
+      "topic": "Investigations of heterogeneity",
+      "status": "partly",
+      "where": "Synthesis of results"
+    },
+    {
+      "item": "20d",
+      "section": "Results",
+      "topic": "Sensitivity analyses",
+      "status": "not reported",
+      "where": "not done by the pipeline"
+    },
+    {
+      "item": "21",
+      "section": "Results",
+      "topic": "Reporting biases",
+      "status": "not reported",
+      "where": "not assessed"
+    },
+    {
+      "item": "22",
+      "section": "Results",
+      "topic": "Certainty of evidence",
+      "status": "not reported",
+      "where": "not assessed"
+    },
+    {
+      "item": "23a",
+      "section": "Discussion",
+      "topic": "Interpretation in the context of other evidence",
+      "status": "reported",
+      "where": "Discussion"
+    },
+    {
+      "item": "23b",
+      "section": "Discussion",
+      "topic": "Limitations of the evidence",
+      "status": "reported",
+      "where": "Limitations"
+    },
+    {
+      "item": "23c",
+      "section": "Discussion",
+      "topic": "Limitations of the review processes",
+      "status": "reported",
+      "where": "Limitations"
+    },
+    {
+      "item": "23d",
+      "section": "Discussion",
+      "topic": "Implications for practice, policy and research",
+      "status": "reported",
+      "where": "Research agenda (from the Evidence gaps)"
+    },
+    {
+      "item": "24a",
+      "section": "Other information",
+      "topic": "Registration",
+      "status": "reported",
+      "where": "Other information"
+    },
+    {
+      "item": "24b",
+      "section": "Other information",
+      "topic": "Access to the protocol",
+      "status": "reported",
+      "where": "Other information"
+    },
+    {
+      "item": "24c",
+      "section": "Other information",
+      "topic": "Amendments to the protocol",
+      "status": "reported",
+      "where": "Other information"
+    },
+    {
+      "item": "25",
+      "section": "Other information",
+      "topic": "Support (funding)",
+      "status": "not reported",
+      "where": "to be completed by the authors"
+    },
+    {
+      "item": "26",
+      "section": "Other information",
+      "topic": "Competing interests",
+      "status": "not reported",
+      "where": "to be completed by the authors"
+    },
+    {
+      "item": "27",
+      "section": "Other information",
+      "topic": "Availability of data, code and other materials",
+      "status": "reported",
+      "where": "Other information"
+    }
+  ]
+}

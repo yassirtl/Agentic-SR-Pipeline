@@ -49,7 +49,7 @@ CHECKS = [
 DEMO_FILES = ["run.json", "audit.jsonl"]
 REPORT_FILES = ["prisma_flow.png", "manuscript.md", "manuscript.docx", "references.bib",
                 "protocol.json", "prisma_counts.json", "run_summary.json", "evidence_map.png",
-                "writer.json", "findings.json"]
+                "writer.json", "findings.json", "prisma_checklist.json"]
 
 
 # --- Demo snapshot ----------------------------------------------------------------------

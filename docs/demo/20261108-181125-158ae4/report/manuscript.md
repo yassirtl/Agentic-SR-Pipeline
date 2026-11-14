@@ -1,4 +1,4 @@
-# Lightweight Machine-Learning Models for ECG Classification
+# Lightweight Machine-Learning Models for ECG Classification: a systematic review
 
 *Draft systematic review produced by an agentic AI pipeline (PRISMA 2020 structure). A reviewer must check it before use. The Introduction, Discussion, Conclusions and parts of the abstract were drafted by an AI writer from the review's own tables; every number was checked by code (Appendix A).*
 
@@ -277,7 +277,7 @@ In conclusion, this systematic review underscores the need for improved evaluati
 
 ## Other information
 
-- **Registration and protocol.** Not registered. The protocol is published with the review (`protocol.json`); where its criteria came from is in Appendix A.
+- **Registration and protocol.** Not registered. The protocol is published with the review (`protocol.json`); where its criteria came from is in Appendix A. Amendments: The protocol was approved automatically, with no human edits, and was not amended after approval.
 - **Support and competing interests.** [to be completed by the authors]
 - **Availability of data.** Evidence tables, extracted values with their quotes, screening decisions and the BibTeX file are published with the review (`tables/`, `references.bib`).
 - **Use of AI.** This draft was produced by LLM agents under code checks; every number in the text comes from the tables. A reviewer must check it before use.
@@ -466,3 +466,74 @@ Coordinator proposals refused by the guardrail (deterministic substitute run ins
 | S53 Tang 2026 | checklist | high | D1 unclear; D2 unclear; D3 high; D4 low; D5 low |
 | S54 Menon 2023 | checklist | high | D1 unclear; D2 low; D3 high; D4 unclear; D5 unclear |
 | S55 Yaser 2025 | checklist | unclear | D1 unclear; D2 unclear; D3 unclear; D4 unclear; D5 unclear |
+
+## Appendix C. Studies excluded at full text
+
+The 15 reports that reached full-text screening and were excluded, with the criterion they failed (the quote behind each decision is in `tables/screening.csv`).
+
+| Report | Criterion not met | Text read |
+|---|---|---|
+| An Automated System for ECG Arrhythmia Detection Using Machine Learning Techniques | I4 (no efficiency metric) | full text |
+| Transfer learning for ECG classification | I3 (no constrained device) | full text |
+| Real-time Cardiac Arrhythmia Detection Using Machine Learning and Wearable Devices | I4 (no efficiency metric) | full text |
+| Design and Development of Energy-efficient Edge AI Models for 12-lead ECG Diagnosis System in Rural Areas | D (not a primary study) | abstract only |
+| Machine learning workflow for edge computed arrhythmia detection in exploration class missions. | I4 (no efficiency metric) | full text |
+| Research on a Lightweight Arrhythmia Classification Model Based on Knowledge Distillation for Wearable Single-Lead ECG Monitoring Systems. | I3 (no constrained device) | full text |
+| QRS-centric beat-wise atrial fibrillation detection in ECG signals using deep neural networks. | I3 (no constrained device) | full text |
+| Enhanced detection of atrial fibrillation in single-lead electrocardiograms using a Cloud-based artificial intelligence platform. | I4 (no efficiency metric) | full text |
+| Automatic Classification of Anomalous ECG Heartbeats from Samples Acquired by Compressed Sensing. | I4 (no efficiency metric) | full text |
+| Cardiologist-level interpretable knowledge-fused deep neural network for automatic arrhythmia diagnosis. | I4 (no efficiency metric) | full text |
+| Hybrid CNN-BLSTM architecture for classification and detection of arrhythmia in ECG signals. | I3 (no constrained device) | full text |
+| Hierarchical deep learning for autonomous multi-label arrhythmia detection and classification on real-world wearable electrocardiogram data. | I4 (no efficiency metric) | full text |
+| Development and Validation of a Real-Time Service Model for Noise Removal and Arrhythmia Classification Using Electrocardiogram Signals. | I4 (no efficiency metric) | full text |
+| Reliable ECG classification using parallel hybrid models with limited resources. | I3 (no constrained device) | full text |
+| MSCA-TNet based deep learning method for ECG arrhythmia classification. | I3 (no constrained device) | full text |
+
+## Appendix D. PRISMA 2020 checklist (checked by code)
+
+Each of the 42 PRISMA 2020 checklist items (27 items with their parts) was checked in this article by code: 30 reported, 4 partly, 8 not reported.
+
+| Item | Section | Topic | Status | Where / why |
+|---|---|---|---|---|
+| 1 | Title | Identify the report as a systematic review | reported | Title |
+| 2 | Abstract | Structured abstract (PRISMA 2020 for Abstracts) | reported | Abstract |
+| 3 | Introduction | Rationale | reported | Introduction |
+| 4 | Introduction | Objectives or question | reported | Introduction |
+| 5 | Methods | Eligibility criteria | reported | Protocol and eligibility criteria |
+| 6 | Methods | Information sources and dates searched | reported | Information sources and search strategy |
+| 7 | Methods | Full search strategies | reported | Information sources and search strategy |
+| 8 | Methods | Selection process (reviewers, automation tools) | reported | Selection process |
+| 9 | Methods | Data collection process | reported | Data collection and risk of bias |
+| 10a | Methods | Data items: outcomes | reported | Protocol and eligibility criteria |
+| 10b | Methods | Data items: other variables | reported | Data items |
+| 11 | Methods | Study risk of bias assessment | reported | Data collection and risk of bias |
+| 12 | Methods | Effect measures | reported | Synthesis methods |
+| 13a | Methods | Which studies were eligible for each synthesis | partly | Synthesis methods |
+| 13b | Methods | Data preparation for synthesis | reported | Synthesis methods |
+| 13c | Methods | Tabulation and visual display | reported | Synthesis methods |
+| 13d | Methods | Synthesis methods and rationale | reported | Synthesis methods |
+| 13e | Methods | Exploring causes of heterogeneity | reported | Synthesis methods |
+| 13f | Methods | Sensitivity analyses | not reported | not done by the pipeline |
+| 14 | Methods | Reporting bias assessment | not reported | not done by the pipeline |
+| 15 | Methods | Certainty assessment (e.g. GRADE) | not reported | not done by the pipeline |
+| 16a | Results | Study selection and flow diagram | reported | Study selection |
+| 16b | Results | Excluded studies that seemed to meet the criteria | reported | Appendix C (every full-text exclusion with its criterion) |
+| 17 | Results | Study characteristics | reported | Study characteristics |
+| 18 | Results | Risk of bias in studies | reported | Risk of bias |
+| 19 | Results | Results of individual studies | partly | Study characteristics |
+| 20a | Results | Characteristics and risk of bias of each synthesis | partly | Synthesis of results |
+| 20b | Results | Results of syntheses | reported | Synthesis of results |
+| 20c | Results | Investigations of heterogeneity | partly | Synthesis of results |
+| 20d | Results | Sensitivity analyses | not reported | not done by the pipeline |
+| 21 | Results | Reporting biases | not reported | not assessed |
+| 22 | Results | Certainty of evidence | not reported | not assessed |
+| 23a | Discussion | Interpretation in the context of other evidence | reported | Discussion |
+| 23b | Discussion | Limitations of the evidence | reported | Limitations |
+| 23c | Discussion | Limitations of the review processes | reported | Limitations |
+| 23d | Discussion | Implications for practice, policy and research | reported | Research agenda (from the Evidence gaps) |
+| 24a | Other information | Registration | reported | Other information |
+| 24b | Other information | Access to the protocol | reported | Other information |
+| 24c | Other information | Amendments to the protocol | reported | Other information |
+| 25 | Other information | Support (funding) | not reported | to be completed by the authors |
+| 26 | Other information | Competing interests | not reported | to be completed by the authors |
+| 27 | Other information | Availability of data, code and other materials | reported | Other information |

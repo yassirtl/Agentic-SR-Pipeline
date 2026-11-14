@@ -17,6 +17,7 @@ from pathlib import Path
 from ..agents.extraction import included_papers
 from ..state import stage_round
 from . import findings as F
+from . import prisma_checklist as PC
 from .manuscript import facts_sheet, manuscript
 from .writer import write as write_prose
 from .prisma import flow_counts, flow_diagram
@@ -118,6 +119,11 @@ def make_report(out_dir: str | Path, *, models: dict[str, str] | None = None,
 
         md = manuscript(state, base=out_dir, models=models or {}, summary=summary,
                         prisma_png=png, fx=fx, writer=prose)
+        checklist = PC.check(md, state)       # PRISMA 2020, on the finished article
+        md = md.rstrip("\n") + "\n\n" + "\n".join(PC.appendix(checklist)) + "\n"
+        (out_dir / "prisma_checklist.json").write_text(json.dumps(
+            {"summary": PC.summary(checklist), "items": checklist}, indent=2))
+        files["prisma_checklist.json"] = str(out_dir / "prisma_checklist.json")
         (out_dir / "manuscript.md").write_text(md)
         files["manuscript.md"] = str(out_dir / "manuscript.md")
         files["manuscript.docx"] = str(markdown_to_docx(md, out_dir / "manuscript.docx",
