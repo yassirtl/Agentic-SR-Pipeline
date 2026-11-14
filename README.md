@@ -21,6 +21,30 @@ The design, decisions, tuning log and build history are in [docs/PLAN.md](docs/P
 - **Human in the loop.** Two pauses: protocol approval (edit anything, accept a suggested design restriction) and screening conflicts the adjudicator cannot resolve. `--auto` skips both.
 - **Nothing invented.** A screening exclusion, an extracted value and a risk-of-bias judgment each need a quote that code finds in the text; numbers in the narrative must appear in the evidence tables; the critic's objections become blockers only when code confirms them.
 - **Reproducible.** LLM answers, database answers and embeddings are cached on disk: re-running a finished run costs $0 and gives the same output.
+- **LangGraph.** One `StateGraph` (`graph.py`): the nine stages and the coordinator are nodes; the coordinator's choice is a conditional edge checked by the guardrail; `interrupt` pauses for a human; a SQLite checkpointer saves every step (resume with `--resume`).
+- **RAG.** At full-text screening the open-access texts are chunked and indexed (`rag/`): FAISS (dense, OpenAI embeddings) and BM25 (sparse), merged by reciprocal rank fusion, then re-ranked by the LLM; the best passages per criterion (and per extraction field) are what the screeners and the extraction agent read. The index is built there, not in the retrieval stage, because it needs the full texts that full-text screening fetches. **Context compression** (optional, `rag_compress: true`): only the sentences of each passage that match the question are kept (`rag/compress.py`); off by default because screening and extraction were evaluated without it.
+- **Tool calling.** The critic is a LangChain tool-calling agent (`bind_tools`): it decides itself when to call `lookup_study`, `outcome_summary` and `check_quote` on the evidence tables before it objects to a sentence; every call is in the audit log.
+- **Sources.** OpenAlex, PubMed (with MeSH), arXiv and Semantic Scholar (`sources/`); the planner picks them per question, editable at approval.
+- **PRISMA checks.** The flow diagram's arithmetic, and a PRISMA 2020 checklist validator that checks the finished article against the 42 checklist items (appendix of the article, `prisma_checklist.json`).
+- **Model.** gpt-4o-mini for every agent by default (cheap, 128k context); any agent can use another model (`config.yaml` `models:` or `SR_MODEL_<AGENT>`), e.g. a stronger model for the adjudicator or the writer.
+
+## How it was built (development steps)
+
+The project was built in parts, each planned, built, tested and committed on its own; the full log with every decision and measurement is in [docs/PLAN.md](docs/PLAN.md) (Progress table).
+
+| Part | What was built |
+|---|---|
+| 1–2 | Architecture and strategy; LangGraph skeleton (state, stages, coordinator, guardrail), LLM disk cache and cost tracking |
+| 3 | Configuration, PRISMA protocol template, planner agent and the human approval step |
+| 4–4d | Search strategy agent and database connectors (OpenAlex, PubMed, arXiv), hit-count refinement, recall and precision fixes from the first runs |
+| 5 | Retrieval and deduplication; open-access full text; RAG index (FAISS + BM25 + re-ranking) |
+| 6–6d | Dual screening with adjudicator and verified quotes; screening rules tuned on a development topic, then frozen |
+| 7 | Extraction and risk of bias with verified quotes |
+| 8–8b | Synthesis (meta-analysis, SWiM, diagnostic accuracy) and the critic |
+| 9–9c | Report (PRISMA diagram, manuscript, tables, BibTeX), command line, first real runs |
+| 10–10f | Evaluation (gold reviews, completeness, accuracy, consistency, time), evaluation runs and fixes, technical report |
+| 11a–11h | Streamlit app (run viewer, cost estimator, live run with budget cap, human check, guided review, free demo, blind labels); the article as a review draft (evidence map, evidence gaps checked against OpenAlex, research agenda) |
+| 12 | Requirements audit ([docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)): tool-calling critic, context compression, Semantic Scholar, PRISMA 2020 checklist validator; final tests |
 
 ## Install
 
