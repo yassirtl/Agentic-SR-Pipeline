@@ -1,0 +1,21 @@
+{
+  "run_id": "20261108-181125-158ae4",
+  "question": null,
+  "topic": "T2",
+  "auto": true,
+  "screen_limit": 100,
+  "models": {
+    "coordinator": "gpt-4o-mini",
+    "planner": "gpt-4o-mini",
+    "search_strategy": "gpt-4o-mini",
+    "screener_a": "gpt-4o-mini",
+    "screener_b": "gpt-4o-mini",
+    "adjudicator": "gpt-4o-mini",
+    "reranker": "gpt-4o-mini",
+    "extraction": "gpt-4o-mini",
+    "risk_of_bias": "gpt-4o-mini",
+    "synthesis": "gpt-4o-mini",
+    "critic": "gpt-4o-mini"
+  },
+  "started_at": "2026-11-08T18:11:25+00:00"
+}

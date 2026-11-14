@@ -93,21 +93,30 @@ Metrics, grouped by the four criteria of the brief (`src/sr_pipeline/evaluation/
 | Inter-agent consistency | kappa and agreement of screener A vs B per stage, share adjudicated; coordinator decisions and guardrail refusals |
 | Time savings | run time, LLM calls, cost; next to a manual estimate in person-days from the sourced rates in `evaluation/manual_effort.yaml` (PredicTER defaults) |
 
-## View runs, estimate cost, run live
-
-A Streamlit app reads runs from `runs/` (or `SR_RUNS_DIR`). The viewer and the estimator make no LLM, database or embedding call; the **Live run** page starts real (billed) runs.
+## Use the app (demo or a real review)
 
 ```bash
 .venv/bin/pip install -e ".[ui]"
 .venv/bin/sr-ui                # opens http://localhost:8501 in the browser (Ctrl+C to stop)
 ```
 
-- **Runs**: one row per run (topic, date, limit, screened, included, billed cost, time). Click a row to open it.
-- **Run detail**: the nine stages as cards in PRISMA order. Each card shows its status (done / stale / not run), how many times the guardrail refused it, counts in and out, and LLM calls, tokens and billed $. Tabs show the coordinator timeline (proposal, accepted or refused, guardrail reason, rationale), the PRISMA diagram, screening decisions with the deciding quote and κ, extraction with quotes, risk of bias, synthesis and critic issues, the gold funnel, and cost by stage.
-- **Cost estimator**: enter a `--limit` and a model per stage. Each finished run is scaled to that limit with its own include rates and tokens per record, priced with `llm.PRICES` as a fresh run (no cache). The estimate is the low, median and high over the source runs, which you can tick or untick. Time is split across stages by LLM calls (runs before the UI have no time per stage).
-- **Live run**: pick an evaluation topic or type a question, a `--limit` and a budget cap in $. The run goes in a background thread (same code and checkpoint as `sr-review`). Every 2 s the page re-reads `audit.jsonl`: the running stage is highlighted, cards show calls, $ and time per stage, counters show records, screened and included, and a bar shows $ spent vs the estimate and the cap. The protocol approval (edit fields, accept suggested designs), the screening conflicts (both screeners' votes and quotes, include / exclude) and the budget pause are answered in forms, with the same answers as the CLI. The cap is checked between stages, so the stage running when it is reached is finished first.
-- **Continue a run** (Runs page): runs that stopped (app closed, network error) or wait for an answer, with Resume from the last checkpoint. Resume shows the limit, the spend so far and the cap, lets you set a cap (useful for runs started without one), and asks you to confirm because it makes billed calls.
-- **Human check**: pick a run and a stage (search relevance, title/abstract, full text, extraction, risk of bias, synthesis claims), draw a seeded random sample of 5 to 20 items, and mark each one correct / wrong / unsure with an optional note. Each item shows the pipeline's decision or value, its quote and the passage or abstract behind it. Marks are saved at once to `evaluation/stage_checks/<run_id>/<stage>.csv` (tracked; seed and population in `<stage>.json`); a marked sample is never redrawn. The result is the share judged correct (unsure left out) with a Wilson 95% interval, and `python -m sr_pipeline.evaluation evaluate RUN` adds it to the accuracy section. The check is not blind (you see the pipeline's answer); the blind title/abstract labels stay the independent measure.
+The home page has two buttons. Both lead through the same five steps, with a step bar at the top, one sentence saying what to do and one main button on every screen:
+
+1. **Question** · 2. **Approve the plan** · 3. **AI at work** · 4. **Results** · 5. **Check accuracy**
+
+- **Watch a demo** (free, about 3 minutes): a replay of the finished T2 review from `docs/demo/` (tracked, so it works on a fresh clone). The nine stages tick off with the run's real numbers, the replay stops once on a real disagreement as a practice question, and the accuracy step lets you mark 10 examples per check. No API call; practice marks go to a temporary folder, never into the project.
+- **Start a new review** (real, billed): pick an example topic or type your question, choose 100 papers (about $0.50, 15 min), 500 (about $2.50) or all, and press Start. You approve the plan (keep / throw-out rules; more settings folded), settle the papers the AI could not decide, and get the results and the report to download. A budget cap (default 1.5 × the high estimate, under Options) pauses the run safely between stages; the home page offers to continue an unfinished review, even after the browser was closed.
+- **Check accuracy**: 10 random items for title/abstract screening, full-text screening and extraction, one card at a time (the AI's decision or value, the quote, the passage) with Correct / Wrong / Not sure. Marks are saved at once to `evaluation/stage_checks/<run_id>/<stage>.csv`, and `python -m sr_pipeline.evaluation evaluate RUN` adds the share correct with a Wilson 95% interval to the evaluation. The check is not blind (you see the AI's answer).
+
+**Advanced tools** (left menu), for the details:
+
+- **Past reviews**: one row per run (topic, date, limit, screened, included, billed cost, time); open one, or resume a stopped run.
+- **Run detail**: the nine stages as cards (status, refusals, counts in and out, LLM calls, tokens, billed $), the coordinator timeline, the PRISMA diagram, screening decisions with the deciding quote and κ, extraction, risk of bias, synthesis and critic issues, the gold funnel, cost by stage.
+- **Live run (expert)**: the same live run with every counter and the raw progress log.
+- **Human check (all stages)**: the per-stage check for all six stages (search relevance, risk of bias and synthesis claims too), sample size 5 to 20, any seed.
+- **Cost estimator**: a `--limit` and a model per stage; each finished run is scaled to that limit and priced as a fresh run (low, median, high over the runs you tick).
+
+The demo snapshot is rebuilt from a finished run with `python -c "from sr_pipeline.ui.flow import build_demo; build_demo('runs/RUN_ID')"` (local paths are removed).
 
 ## Results
 
@@ -140,8 +149,8 @@ src/sr_pipeline/   state, guardrail, coordinator, llm (cache + cost), graph, cli
   rag/             chunking, embeddings, FAISS + BM25 hybrid index, LLM re-ranker
   reporting/       PRISMA diagram, manuscript (Markdown + DOCX), tables, run summary
   evaluation/      gold lists + coverage, topics, recall funnel, labels, metrics, CLI
-  ui/              Streamlit app: run viewer, cost estimator, live run + budget cap, human check (data.py, live.py, pages.py, app.py)
-protocols/template.yaml   evaluation/   tests/   docs/PLAN.md
+  ui/              Streamlit app: home + guided review (guide.py, flow.py), run viewer, cost estimator, live run + budget cap, human check (data.py, live.py, pages.py, app.py)
+protocols/template.yaml   evaluation/   tests/   docs/PLAN.md   docs/demo/ (demo snapshot of the T2 run)
 ```
 
 ## Limitations

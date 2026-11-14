@@ -1,0 +1,109 @@
+{
+  "identification": {
+    "databases": {
+      "openalex": {
+        "query": "(ECG OR electrocardiogram OR heartbeats OR \"cardiac signals\" OR \"heart rhythm\") AND (\"lightweight models\" OR \"machine learning\" OR ML OR AI OR \"neural networks\" OR \"classification models\") AND (microcontroller OR MCU OR embedded OR \"edge device\" OR \"edge computing\" OR \"edge AI\" OR wearable OR smartphone OR \"mobile phone\" OR FPGA OR ASIC OR SoC OR \"system on chip\" OR TinyML OR low-power OR \"low power\" OR quantized OR quantization OR on-device OR resource-constrained) AND (\"abnormal ECG\" OR \"normal ECG\" OR \"ECG classification\" OR \"arrhythmia detection\" OR \"ECG diagnosis\")",
+        "identified": 521,
+        "downloaded": 521,
+        "not_retrieved": 0,
+        "capped": false,
+        "searched_at": "2026-11-08T18:11:25+00:00"
+      },
+      "pubmed": {
+        "query": "((ECG[tiab] OR electrocardiogram[tiab] OR heartbeats[tiab] OR \"cardiac signals\"[tiab] OR \"heart rhythm\"[tiab] OR Electrocardiography[mh]) AND (\"lightweight models\"[tiab] OR \"machine learning\"[tiab] OR ML[tiab] OR AI[tiab] OR \"neural networks\"[tiab] OR \"classification models\"[tiab] OR \"Machine Learning\"[mh]) AND (microcontroller[tiab] OR MCU[tiab] OR embedded[tiab] OR \"edge device\"[tiab] OR \"edge computing\"[tiab] OR \"edge AI\"[tiab] OR wearable[tiab] OR smartphone[tiab] OR \"mobile phone\"[tiab] OR FPGA[tiab] OR ASIC[tiab] OR SoC[tiab] OR \"system on chip\"[tiab] OR TinyML[tiab] OR low-power[tiab] OR \"low power\"[tiab] OR quantized[tiab] OR quantization[tiab] OR on-device[tiab] OR resource-constrained[tiab]) AND (\"abnormal ECG\"[tiab] OR \"normal ECG\"[tiab] OR \"ECG classification\"[tiab] OR \"arrhythmia detection\"[tiab] OR \"ECG diagnosis\"[tiab])) AND (english[la])",
+        "identified": 97,
+        "downloaded": 97,
+        "not_retrieved": 0,
+        "capped": false,
+        "searched_at": "2026-11-08T18:11:25+00:00"
+      }
+    },
+    "errors": {},
+    "identified": 618,
+    "not_retrieved": 0,
+    "downloaded": 618,
+    "duplicates_removed": 63,
+    "duplicates_by_rule": {
+      "id": 0,
+      "doi": 61,
+      "pmid": 1,
+      "pmcid": 0,
+      "title": 1
+    },
+    "records_screened": 555,
+    "max_records": 3000,
+    "round": 1
+  },
+  "title_abstract": {
+    "records_screened": 100,
+    "records_excluded": 30,
+    "included": 70,
+    "unresolved": 0,
+    "excluded_by_criterion": {
+      "I5": 3,
+      "D": 26,
+      "I1": 1
+    },
+    "resolved_by": {
+      "adjudicator": 66,
+      "arxiv_rule": 1,
+      "agreement": 30,
+      "auto-include": 1,
+      "design_guard": 1,
+      "d_title_rule": 1
+    },
+    "no_abstract": 6,
+    "quotes_not_found": 24,
+    "llm_errors": 0,
+    "title_rule": 1,
+    "arxiv_rule": 1,
+    "automation_by_criterion": {
+      "I5": 1,
+      "D": 1
+    },
+    "evidence_term_downgrades": 7,
+    "ft_absence": 0,
+    "eligibility_quotes": 0,
+    "pairs": 98,
+    "agreement": 0.3469,
+    "kappa": 0.0568,
+    "round": 1,
+    "screen_limit": 100,
+    "records_available": 555,
+    "not_screened": 455
+  },
+  "full_text": {
+    "reports_sought": 70,
+    "reports_not_retrieved": 40,
+    "not_retrieved_reasons": {
+      "no open-access full text": 37,
+      "PDF: HTTP 403": 3
+    },
+    "reports_assessed": 30,
+    "screened_on_abstract_only": 40,
+    "reports_excluded": 15,
+    "excluded_by_criterion": {
+      "I4": 8,
+      "I3": 6,
+      "D": 1
+    },
+    "studies_included": 55,
+    "included_on_abstract_only": 39,
+    "unresolved": 0,
+    "resolved_by": {
+      "agreement": 62,
+      "adjudicator": 8
+    },
+    "quotes_not_found": 26,
+    "llm_errors": 0,
+    "title_rule": 0,
+    "eligibility_quotes": 0,
+    "arxiv_rule": 0,
+    "evidence_term_downgrades": 25,
+    "ft_absence": 17,
+    "pairs": 70,
+    "agreement": 0.9,
+    "kappa": 0.7429,
+    "round": 1
+  }
+}

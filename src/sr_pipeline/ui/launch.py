@@ -24,6 +24,7 @@ def main() -> None:
                 "--browser.gatherUsageStats", "false",
                 "--theme.base", "light",
                 "--theme.primaryColor", "#2a78d6",
+                "--client.toolbarMode", "minimal",
                 *args]
     sys.exit(stcli.main())
 

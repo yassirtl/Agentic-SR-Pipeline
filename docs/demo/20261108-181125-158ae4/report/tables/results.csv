@@ -1,0 +1,166 @@
+outcome_id,outcome,label,measure,direction,metric_used,metric_conflict,conflict,timepoint,hedges_g,ci_low,ci_high,reason
+O1,abnormal versus normal ECG,S1,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S2,ECG classification.,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S3,classification accuracy,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S4,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S5,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S6,not reported,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S7,ECG signal diagnosis,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S8,MIT-BIH arrhythmia database,not extractable,,False,,,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S9,"ECG classification performance metrics (precision, recall, F1-score) for arrhythmias",not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S10,not reported,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S11,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S12,classification accuracy,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S13,SVM classifier,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S14,not reported,not extractable,,False,,,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S15,"classification accuracy, sensitivity, precision",not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S16,"AAMI standards (N, S, V, F, Q) classification",not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S17,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S18,not reported,not extractable,,False,,,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S19,CWT-based scalogram representation.,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S20,1D CNN model,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S21,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S22,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S23,1D-CNN for arrhythmia classification,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S24,Binary classification (Normal vs. Abnormal).,not extractable,,False,,,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S25,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S26,arrhythmia detection,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S27,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S28,ECG classification.,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S29,not reported,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S30,ECG rhythm classification.,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S31,classification precision,not extractable,,False,,,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S32,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S33,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S34,"Significant arrhythmias (SVT, VT, AV Block, Pause, Paroxysmal AF)",not extractable,,False,,,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S35,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S36,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S37,micro F1-score.,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S38,Binary and multi-class classification.,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S39,Two-class classification (normal/abnormal).,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S40,ECG classification.,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S41,not reported,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S42,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S43,F1 score and AUC for anomaly detection.,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S44,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S45,inference accuracy,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S46,abnormalities in ECG data,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S47,F1 score,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S48,logistic regression and Gradient Boosting Trees,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S49,not reported,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S50,not reported,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S51,ECG rhythm classification,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S52,Single lead ECG.,not extractable,,False,,,,,,no verified result
+O1,abnormal versus normal ECG,S53,classification accuracy.,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S54,"specificity, sensitivity, accuracy",not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O1,abnormal versus normal ECG,S55,Classification accuracy.,not extractable,,False,,post-intervention,,,,direction of the scale unknown (protocol outcome_directions)
+O2,accuracy,S1,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S2,Accuracy.,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S3,classification accuracy,not extractable,,False,,,,,,no verified result
+O2,accuracy,S4,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S5,accuracy,not extractable,,False,,,,,,no verified result
+O2,accuracy,S6,not reported,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S7,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S8,average accuracy,not extractable,,False,,,,,,between-group estimate: no between-group difference with a value; post-intervention means: no single intervention-control arm pair; change from baseline: no single intervention-control arm pair
+O2,accuracy,S9,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S10,not reported,favours intervention,post_means,False,,post-intervention,,,,n or SD not verified: no effect size
+O2,accuracy,S11,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S12,accuracy,not extractable,,False,,,,,,no verified result
+O2,accuracy,S13,Accuracy of SVM classifier,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S14,accuracy,not extractable,,False,,,,,,between-group estimate: no between-group difference with a value; post-intervention means: no single intervention-control arm pair; change from baseline: no single intervention-control arm pair
+O2,accuracy,S15,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S16,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S17,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S18,not reported,not extractable,,False,,,,,,between-group estimate: no between-group difference with a value; post-intervention means: no single intervention-control arm pair; change from baseline: no single intervention-control arm pair
+O2,accuracy,S19,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S20,classification accuracy,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S21,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S22,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S23,accuracy,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S24,Classification metrics.,not extractable,,False,,,,,,between-group estimate: no between-group difference with a value; post-intervention means: no single intervention-control arm pair; change from baseline: no single intervention-control arm pair
+O2,accuracy,S25,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S26,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S27,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S28,energy efficiency (GOP/s/MeLUT).,not extractable,,False,,,,,,no verified result
+O2,accuracy,S29,accuracy,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S30,accuracy.,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S31,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S32,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S33,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S34,sensitivity for detecting cardiac arrhythmias,not extractable,,False,,,,,,no verified result
+O2,accuracy,S35,accuracy,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S36,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S37,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S38,Accuracy.,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S39,Accuracy.,not extractable,,False,,,,,,no verified result
+O2,accuracy,S40,accuracy metrics.,not extractable,,False,,,,,,no verified result
+O2,accuracy,S41,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S42,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S43,macro-averaged F1-Score,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S44,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S45,inference accuracy,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S46,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S47,F1 score,not extractable,,False,,,,,,no verified result
+O2,accuracy,S48,accuracy,not extractable,,False,,,,,,no verified result
+O2,accuracy,S49,accuracy,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S50,not reported,not extractable,,False,,,,,,no verified result
+O2,accuracy,S51,"F1-score, ROC-AUC",not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S52,F1-score.,not extractable,,False,,,,,,no verified result
+O2,accuracy,S53,classification accuracy.,favours intervention,post_means,False,,post-intervention,,,,n or SD not verified: no effect size
+O2,accuracy,S54,"sensitivity, specificity, accuracy",not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O2,accuracy,S55,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S1,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S2,Efficiency.,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O3,efficiency,S3,power consumption,not extractable,,False,,,,,,no verified result
+O3,efficiency,S4,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S5,efficiency,not extractable,,False,,,,,,no verified result
+O3,efficiency,S6,not reported,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O3,efficiency,S7,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S8,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S9,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S10,energy consumption per inference,not extractable,,False,,,,,,no verified result
+O3,efficiency,S11,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S12,power consumption,not extractable,,False,,,,,,no verified result
+O3,efficiency,S13,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S14,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S15,computational and energy efficiency,not extractable,,False,,,,,,no verified result
+O3,efficiency,S16,efficiency,not extractable,,False,,,,,,no verified result
+O3,efficiency,S17,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S18,not reported,not extractable,,False,,,,,,between-group estimate: no between-group difference with a value; post-intervention means: no single intervention-control arm pair; change from baseline: no single intervention-control arm pair
+O3,efficiency,S19,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S20,energy consumption,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O3,efficiency,S21,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S22,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S23,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S24,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S25,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S26,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S27,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S28,area-delay product (ADP).,not extractable,,False,,,,,,no verified result
+O3,efficiency,S29,not reported,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O3,efficiency,S30,real-time operation.,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O3,efficiency,S31,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S32,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S33,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S34,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S35,resource consumption,not extractable,,False,,,,,,no verified result
+O3,efficiency,S36,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S37,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S38,Efficiency.,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O3,efficiency,S39,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S40,efficiency metrics.,not extractable,,False,,,,,,no verified result
+O3,efficiency,S41,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S42,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S43,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S44,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S45,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S46,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S47,Memory footprint and operations count,not extractable,,False,,,,,,no verified result
+O3,efficiency,S48,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S49,energy per classification,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O3,efficiency,S50,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S51,Inference time,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O3,efficiency,S52,not reported,not extractable,,False,,,,,,no verified result
+O3,efficiency,S53,computational complexity.,not extractable,,False,,,,,,no verified result
+O3,efficiency,S54,runtime and memory efficiency,not extractable,,False,,post-intervention,,,,between-group estimate: no between-group difference with a value; post-intervention means: per-arm means not verified; change from baseline: change from baseline not available in both arms
+O3,efficiency,S55,not reported,not extractable,,False,,,,,,no verified result

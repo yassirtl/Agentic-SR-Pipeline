@@ -1,0 +1,228 @@
+{
+  "title": "Lightweight Machine-Learning Models for ECG Classification",
+  "pico": {
+    "population": "ECG signals or heartbeats",
+    "intervention": "lightweight machine-learning models",
+    "comparator": "no intervention, usual care or any control",
+    "outcomes": [
+      "abnormal versus normal ECG",
+      "accuracy",
+      "efficiency"
+    ],
+    "setting": "resource-constrained devices: microcontroller, wearable, smartphone, FPGA"
+  },
+  "inclusion_criteria": [
+    "Machine-learning model that classifies ECG signals or heartbeats",
+    "The model separates abnormal from normal ECG (binary output, or abnormal classes reported against normal)",
+    "Model evaluated for or on a resource-constrained device (microcontroller, wearable, smartphone or FPGA)",
+    "At least one efficiency metric reported (model size, memory, latency, power or energy)",
+    "Peer-reviewed journal or conference publication"
+  ],
+  "exclusion_criteria": [],
+  "full_text_criteria": [
+    "At least one efficiency metric reported (model size, memory, latency, power or energy)"
+  ],
+  "study_designs": [],
+  "suggested_designs": [
+    "randomized controlled trial"
+  ],
+  "design_reason": "Best design to evaluate the effectiveness of machine-learning models.",
+  "outcome_directions": [
+    {
+      "outcome": "abnormal versus normal ECG",
+      "better": "unknown"
+    },
+    {
+      "outcome": "accuracy",
+      "better": "higher"
+    },
+    {
+      "outcome": "efficiency",
+      "better": "higher"
+    }
+  ],
+  "criterion_labels": [
+    {
+      "criterion": "Machine-learning model that classifies ECG signals or heartbeats",
+      "label": "not an ECG classifier"
+    },
+    {
+      "criterion": "The model separates abnormal from normal ECG (binary output, or abnormal classes reported against normal)",
+      "label": "no abnormal vs normal task"
+    },
+    {
+      "criterion": "Model evaluated for or on a resource-constrained device (microcontroller, wearable, smartphone or FPGA)",
+      "label": "no constrained device"
+    },
+    {
+      "criterion": "At least one efficiency metric reported (model size, memory, latency, power or energy)",
+      "label": "no efficiency metric"
+    },
+    {
+      "criterion": "Peer-reviewed journal or conference publication",
+      "label": "not peer reviewed"
+    }
+  ],
+  "criterion_evidence": [
+    {
+      "criterion": "Model evaluated for or on a resource-constrained device (microcontroller, wearable, smartphone or FPGA)",
+      "terms": [
+        "microcontroller",
+        "MCU",
+        "embedded",
+        "edge",
+        "wearable",
+        "smartphone",
+        "mobile",
+        "phone",
+        "FPGA",
+        "ASIC",
+        "SoC",
+        "system on chip",
+        "chip",
+        "TinyML",
+        "Raspberry Pi",
+        "Arduino",
+        "STM32",
+        "ESP32",
+        "Cortex",
+        "nRF",
+        "Jetson",
+        "hardware",
+        "on-device",
+        "processor",
+        "low power",
+        "resource-constrained",
+        "constrained"
+      ]
+    },
+    {
+      "criterion": "At least one efficiency metric reported (model size, memory, latency, power or energy)",
+      "terms": [
+        "parameter",
+        "memory",
+        "kB",
+        "MB",
+        "KB",
+        "kilobyte",
+        "megabyte",
+        "RAM",
+        "flash",
+        "footprint",
+        "model size",
+        "latency",
+        "inference time",
+        "execution time",
+        "runtime",
+        "ms",
+        "millisecond",
+        "power",
+        "energy",
+        "mW",
+        "mJ",
+        "nJ",
+        "watt",
+        "joule",
+        "MAC",
+        "MACs",
+        "FLOPs",
+        "FLOP",
+        "OPs",
+        "throughput",
+        "compression",
+        "cycles"
+      ]
+    }
+  ],
+  "rationale": "The research question focuses on the effectiveness of lightweight machine-learning models in detecting abnormal ECG signals on resource-constrained devices. The PICO framework helps to clearly define the population, intervention, comparator, outcomes, and setting.",
+  "question": "Which lightweight machine-learning models detect abnormal versus normal ECG on resource-constrained devices (microcontroller, wearable, smartphone, FPGA), and how accurate and efficient are they?",
+  "databases": [
+    "openalex",
+    "pubmed"
+  ],
+  "database_reason": "Relevant for health and machine learning research.",
+  "years": {
+    "start": 2021,
+    "end": null,
+    "end_date": null,
+    "recent": null
+  },
+  "languages": [
+    "English"
+  ],
+  "topic": "T2",
+  "criteria_source": "topics.yaml T2 (review none (new review; no published systematic review asks this, searched 2026-11-08))",
+  "criterion_tests": {},
+  "direction_metric_order": [
+    "between_group_estimate",
+    "post_means",
+    "change_means"
+  ],
+  "extraction_fields": {
+    "dataset": "ECG database(s) used (e.g. MIT-BIH, PTB-XL, INCART) and number of records or subjects",
+    "classes": "Classes the model outputs and their number (e.g. AAMI N, S, V, F, Q; normal vs abnormal)",
+    "partition": "Evaluation protocol as stated: how data were split between training and test (inter-patient, intra-patient / random beats, patient-specific)",
+    "model": "Model family and topology (e.g. 1D-CNN, LSTM, SVM, spiking network, transformer)",
+    "operations": "Operation count per classification (MACs, OPs or FLOPs, as printed)",
+    "parameters": "Parameter count of the deployed model",
+    "arithmetic": "Arithmetic width of the deployed model (e.g. float32, int8, binary, fixed point)",
+    "memory": "Memory footprint of the deployed model (kB), and peak activation memory if given",
+    "platform": "Target hardware platform and technology (microcontroller, FPGA, ASIC node, SoC, smartphone), as named",
+    "clock": "Clock frequency of the target (MHz)",
+    "latency": "Inference latency or time per classification on the target",
+    "power_energy": "Power consumption and/or energy per classification on the target",
+    "classification_metrics": "All classification metrics reported (accuracy, sensitivity, specificity, PPV, F1, per class if given), and whether they are for the deployed variant or the software model"
+  },
+  "checklist_name": "Five-domain instrument of Arredondo-Velazquez 2026 (Table 2)",
+  "checklist_domains": [
+    {
+      "id": "D1",
+      "name": "Evaluation protocol stated",
+      "question": "Is the evaluation protocol (how ECG records or subjects were divided between training and test) explicitly stated?"
+    },
+    {
+      "id": "D2",
+      "name": "Subjects separated between training and test",
+      "question": "Does the protocol separate subjects between training and test? Low for an inter-patient partition, unclear for a patient-specific one, high otherwise (e.g. intra-patient or random beat split)."
+    },
+    {
+      "id": "D3",
+      "name": "Per-class or prevalence-insensitive metric",
+      "question": "Is a per-class or prevalence-insensitive metric reported (e.g. per-class sensitivity and PPV, macro-F1), not only overall accuracy?"
+    },
+    {
+      "id": "D4",
+      "name": "Deployed variant evaluated",
+      "question": "Can the classification quality of the variant actually deployed on the device be separated from the best software result?"
+    },
+    {
+      "id": "D5",
+      "name": "Model size reported",
+      "question": "Is a parameter count or a memory footprint of the model reported?"
+    }
+  ],
+  "search_terms": {
+    "setting": [
+      "microcontroller",
+      "MCU",
+      "embedded",
+      "edge device",
+      "edge computing",
+      "edge AI",
+      "wearable",
+      "smartphone",
+      "mobile phone",
+      "FPGA",
+      "ASIC",
+      "SoC",
+      "system on chip",
+      "TinyML",
+      "low-power",
+      "low power",
+      "quantized",
+      "quantization",
+      "on-device",
+      "resource-constrained"
+    ]
+  }
+}

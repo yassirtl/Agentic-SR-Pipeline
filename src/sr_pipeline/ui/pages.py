@@ -842,16 +842,18 @@ def page_live() -> None:
 
 # --- Human in the loop: the three pauses, same answers as the CLI --------------------------
 
-def pending_form(run_id: str, payload: dict) -> None:
+def pending_form(run_id: str, payload: dict, *, guided: bool = False) -> None:
+    """``guided``: inside the guided review, whose step heading already says what to do, so
+    the forms drop their own technical heading."""
     kind = payload.get("kind")
     if payload.get("error"):
         st.error(f"Previous answer refused: {payload['error']}")
     if kind == "protocol_approval":
-        protocol_form(run_id, payload)
+        protocol_form(run_id, payload, guided=guided)
     elif kind == "screening_conflicts":
-        conflicts_form(run_id, payload)
+        conflicts_form(run_id, payload, guided=guided)
     elif kind == "budget_cap":
-        budget_form(run_id, payload)
+        budget_form(run_id, payload, guided=guided)
     else:
         st.warning(f"Unknown pause: {kind}")
 
@@ -860,30 +862,46 @@ def _lines(text: str) -> list[str]:
     return [x.strip() for x in text.splitlines() if x.strip()]
 
 
-def protocol_form(run_id: str, payload: dict) -> None:
+def protocol_form(run_id: str, payload: dict, *, guided: bool = False) -> None:
+    """The protocol approval form. ``guided``: plain labels, the keep / throw-out rules first
+    and the rest folded under "More settings"; the same fields and answer either way
+    (``live.protocol_answer``: an untouched form sends exactly ``True``)."""
     p = payload["protocol"]
     pico = p.get("pico") or {}
     years = p.get("years") or {}
-    st.subheader("Approve the protocol")
-    st.markdown(f'<p class="note">Criteria from: {e(payload.get("criteria_source") or "Planner (LLM draft)")}. '
-                'Edit any field, then approve. Unchanged fields are not sent.</p>',
-                unsafe_allow_html=True)
+    if not guided:
+        st.subheader("Approve the protocol")
+        st.markdown(f'<p class="note">Criteria from: {e(payload.get("criteria_source") or "Planner (LLM draft)")}. '
+                    'Edit any field, then approve. Unchanged fields are not sent.</p>',
+                    unsafe_allow_html=True)
     for role, terms in (p.get("search_terms") or {}).items():
         st.caption(f"Search block fixed by the topic ({role}): {', '.join(terms) or 'none'}")
-    with st.form("protocol_form"):
-        edited = {"question": st.text_input("Question", L.form_text(p.get("question")))}
+    labels = ({"question": "Your question",
+               "inc": "✅ Keep papers that… (one rule per line)",
+               "exc": "❌ Throw out papers that… (one rule per line)"} if guided else
+              {"question": "Question", "inc": "Inclusion criteria (one per line)",
+               "exc": "Exclusion criteria (one per line)"})
+    edited: dict = {}
+    accept = False
+
+    def rules():
+        edited["inclusion_criteria"] = _lines(st.text_area(
+            labels["inc"], "\n".join(map(L.form_text, p.get("inclusion_criteria") or [])),
+            height=140))
+        edited["exclusion_criteria"] = _lines(st.text_area(
+            labels["exc"], "\n".join(map(L.form_text, p.get("exclusion_criteria") or [])),
+            height=120))
+
+    def pico_fields():
         c1, c2 = st.columns(2)
         edited["pico.population"] = c1.text_input("Population", L.form_text(pico.get("population")))
         edited["pico.intervention"] = c2.text_input("Intervention", L.form_text(pico.get("intervention")))
         edited["pico.comparator"] = c1.text_input("Comparator", L.form_text(pico.get("comparator")))
         edited["pico.outcomes"] = _lines(c2.text_area("Outcomes (one per line)",
                                                       "\n".join(map(L.form_text, pico.get("outcomes") or []))))
-        edited["inclusion_criteria"] = _lines(st.text_area(
-            "Inclusion criteria (one per line)", "\n".join(map(L.form_text, p.get("inclusion_criteria") or [])),
-            height=140))
-        edited["exclusion_criteria"] = _lines(st.text_area(
-            "Exclusion criteria (one per line)", "\n".join(map(L.form_text, p.get("exclusion_criteria") or [])),
-            height=120))
+
+    def scope():
+        nonlocal accept
         edited["study_designs"] = _lines(st.text_area(
             "Study designs (one per line, empty = no restriction)",
             "\n".join(map(L.form_text, p.get("study_designs") or []))))
@@ -896,11 +914,23 @@ def protocol_form(run_id: str, payload: dict) -> None:
             edited["years.start"] = int(start) or None
         if (end or None) != years.get("end"):
             edited["years.end"] = int(end) or None
-        accept = False
         if payload.get("suggested_designs"):
             accept = st.checkbox(f"Accept the suggested designs: {', '.join(payload['suggested_designs'])} "
                                  f"({payload.get('design_reason') or ''})", key="accept_designs")
-        if st.form_submit_button("Approve and continue", type="primary"):
+
+    with st.form("protocol_form"):
+        edited["question"] = st.text_input(labels["question"], L.form_text(p.get("question")))
+        if guided:
+            rules()
+            with st.expander("More settings: population, study designs, databases, years"):
+                pico_fields()
+                scope()
+        else:
+            pico_fields()
+            rules()
+            scope()
+        if st.form_submit_button("Approve and continue →" if guided else "Approve and continue",
+                                 type="primary"):
             answer = L.protocol_answer(p, edited, accept)
             L.resume(run_id, kind="protocol_approval", answer=answer)
             st.rerun()
@@ -918,11 +948,15 @@ def _vote(v: dict | None) -> str:
     return head + (f"  \n_“{quote}”_" if quote else "")
 
 
-def conflicts_form(run_id: str, payload: dict) -> None:
+def conflicts_form(run_id: str, payload: dict, *, guided: bool = False) -> None:
     papers = payload.get("papers") or []
     stage = D.STAGE_LABELS.get(payload.get("stage"), payload.get("stage"))
-    st.subheader(f"Resolve screening conflicts · {stage} · {len(papers)} "
-                 f"paper{'s' if len(papers) != 1 else ''}")
+    if guided:
+        st.markdown(f"**{len(papers)} paper{'s' if len(papers) != 1 else ''} to decide** "
+                    f"({stage.lower()})")
+    else:
+        st.subheader(f"Resolve screening conflicts · {stage} · {len(papers)} "
+                     f"paper{'s' if len(papers) != 1 else ''}")
     st.markdown('<p class="note">The two screeners disagreed and the adjudicator could not decide. '
                 'Your answer is final and logged as resolved by human.</p>', unsafe_allow_html=True)
     with st.form("conflicts_form"):
@@ -941,9 +975,10 @@ def conflicts_form(run_id: str, payload: dict) -> None:
             st.rerun()
 
 
-def budget_form(run_id: str, payload: dict) -> None:
+def budget_form(run_id: str, payload: dict, *, guided: bool = False) -> None:
     spent, cap = payload.get("spent_usd") or 0.0, payload.get("budget_usd") or 0.0
-    st.subheader("Budget cap reached")
+    if not guided:
+        st.subheader("Budget cap reached")
     st.markdown(f'<p class="note">Spent {money(spent)} of the {money(cap)} cap. The run is paused '
                 'between two stages and is saved: raise the cap to continue now, or leave it '
                 'paused and resume later from the Runs page.</p>', unsafe_allow_html=True)
