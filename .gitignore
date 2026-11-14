@@ -9,3 +9,4 @@ runs/
 !docs/**/*.docx
 CLAUDE.md
 docs/report/report.html
+.DS_Store
