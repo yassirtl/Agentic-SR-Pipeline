@@ -7,6 +7,7 @@ Past reviews. Advanced tools: run viewer and cost estimator (Part 11a), live run
 
 import streamlit as st
 
+from sr_pipeline.ui import blind as B
 from sr_pipeline.ui import guide as G
 from sr_pipeline.ui import pages as P
 
@@ -20,9 +21,11 @@ P.PAGES["check"] = st.Page(P.page_check, title="Human check (all stages)", icon=
                            url_path="check")
 P.PAGES["estimator"] = st.Page(P.page_estimator, title="Cost estimator", icon="🧮",
                                url_path="estimate")
+P.PAGES["labels"] = st.Page(B.page_labels, title="Blind labels (accuracy)", icon="🏷️",
+                            url_path="labels")
 P.setup()
 st.navigation({
     "Start": [P.PAGES["home"], P.PAGES["guide"], P.PAGES["runs"]],
-    "Advanced tools": [P.PAGES["detail"], P.PAGES["live"], P.PAGES["check"],
-                       P.PAGES["estimator"]],
+    "Evaluate": [P.PAGES["labels"], P.PAGES["check"]],
+    "Advanced tools": [P.PAGES["detail"], P.PAGES["live"], P.PAGES["estimator"]],
 }).run()

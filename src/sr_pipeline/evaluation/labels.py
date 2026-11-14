@@ -29,6 +29,42 @@ ANSWERS = {"include": "include", "i": "include", "in": "include", "yes": "includ
            "no": "exclude"}
 
 
+UNSURE = ("unsure", "u", "?", "not sure")
+
+
+def sheets(root: str | Path) -> list[Path]:
+    """Label sheets under ``root`` (evaluation/labels/<run_id>/labels.csv), newest first."""
+    return sorted(Path(root).glob("*/labels.csv"), reverse=True)
+
+
+def sheet_rows(path: str | Path) -> list[dict]:
+    with Path(path).open(newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def set_label(path: str | Path, paper_id: str, human: str, note: str | None = None) -> None:
+    """Write one label (include / exclude / unsure) and note, at once (atomic replace)."""
+    human = human.strip().lower()
+    if human not in ANSWERS and human not in UNSURE:
+        raise ValueError(f"unknown label {human!r}")
+    path = Path(path)
+    rows = sheet_rows(path)
+    for r in rows:
+        if r["paper_id"] == paper_id:
+            r["human"] = ANSWERS.get(human, "unsure")
+            if note is not None:
+                r["note"] = note.strip()
+            break
+    else:
+        raise KeyError(f"{paper_id} is not in {path}")
+    tmp = path.with_suffix(".csv.tmp")
+    with tmp.open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=SHEET_COLS, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+    tmp.replace(path)
+
+
 def sample_records(state: dict, n: int = 30, seed: int = 10) -> list[dict]:
     screened = [r for r in screening_rows(state) if r["ta"] in ("include", "exclude")]
     rng = random.Random(seed)
@@ -73,7 +109,7 @@ def read_labels(path: str | Path) -> tuple[dict[str, str], list[str]]:
     with Path(path).open(newline="") as f:
         for r in csv.DictReader(f):
             raw = (r.get("human") or "").strip().lower()
-            if not raw:
+            if not raw or raw in UNSURE:      # not labelled, or seen and left undecided
                 continue
             if raw not in ANSWERS:
                 problems.append(f"row {r.get('n')}: unknown label {raw!r}")
