@@ -4,6 +4,10 @@ A multi-agent LangGraph pipeline that runs a PRISMA 2020 systematic review from 
 
 The design, decisions, tuning log and build history are in [docs/PLAN.md](docs/PLAN.md).
 
+- **Video demo (3 min 38 s):** [watch on Google Drive](https://drive.google.com/file/d/16v8kVaStbPEep_tK-P9SNdVQYvxf6h6-/view?usp=sharing)
+- **Technical report:** [docs/report/report.pdf](docs/report/report.pdf)
+- **Requirements checklist:** [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md)
+
 ## How it works
 
 ```
