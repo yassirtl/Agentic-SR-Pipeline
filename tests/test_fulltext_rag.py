@@ -270,3 +270,15 @@ def test_oversized_word_is_split_under_the_embedding_limit():
     assert all(len(c["text"]) <= MAX_CHARS for c in chunks)
     assert sum(len(c["text"]) for c in chunks) > 20000   # nothing dropped
     assert len({c["chunk_id"] for c in chunks}) == len(chunks)
+
+
+def test_broken_pdf_characters_are_repaired():
+    """A PDF reader can return a math letter (U+1D465) as surrogate halves, or a lone half:
+    the text must still hash, embed and save (a real run crashed at full-text screening)."""
+    from sr_pipeline.sources.base import clean_text, valid_unicode
+    assert valid_unicode("x 𝑥 y") == "x \U0001d465 y"           # pair joined
+    assert valid_unicode("lone \ud835 half") == "lone � half"          # lone half replaced
+    assert valid_unicode("plain é text") == "plain é text"                # unchanged
+    clean_text("a \ud835  b").encode("utf-8")
+    for c in chunk_paper({"paper_id": "p", "title": "T", "abstract": "acc \ud835 drop"}):
+        c["text"].encode("utf-8")

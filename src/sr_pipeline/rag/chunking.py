@@ -21,6 +21,7 @@ Words, not tokens: a word count needs no tokenizer download and is stable;
 250 English words are about 330 tokens.
 """
 
+from ..sources.base import valid_unicode
 from ..sources.fulltext import FullText
 
 MIN_WORDS = 60  # sections shorter than this are merged with the next ones
@@ -55,7 +56,8 @@ def chunk_paper(paper: dict, fulltext: FullText | None = None, *, size: int = 25
         step = MAX_CHARS - len(prefix)
         for start in range(0, max(len(body), 1), step):  # one piece unless oversized
             chunks.append({"chunk_id": f"{pid}::{len(chunks)}", "paper_id": pid,
-                           "section": section, "text": prefix + body[start:start + step]})
+                           "section": section,
+                           "text": valid_unicode(prefix + body[start:start + step])})
 
     title = (paper.get("title") or "").strip()
     head = " ".join(p for p in (title + ("." if title and not title.endswith((".", "?", "!"))

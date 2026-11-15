@@ -69,11 +69,24 @@ def normalize_doi(doi: str | None) -> str | None:
     return doi.lower() or None
 
 
+def valid_unicode(text: str) -> str:
+    """Text that can be encoded as UTF-8. PDF readers can return a character outside the
+    basic plane (math letters such as U+1D465) as two separate surrogate halves, or only
+    one of them; such text crashes hashing, saving and API calls. Pairs are joined back,
+    a lone half becomes U+FFFD."""
+    try:
+        text.encode("utf-8")
+        return text
+    except UnicodeEncodeError:
+        return text.encode("utf-16", "surrogatepass").decode("utf-16", "replace")
+
+
 def clean_text(text: str | None) -> str | None:
-    """Collapse whitespace (XML sources keep line breaks inside titles/abstracts)."""
+    """Collapse whitespace (XML sources keep line breaks inside titles/abstracts); make the
+    text valid UTF-8 (``valid_unicode``)."""
     if text is None:
         return None
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"\s+", " ", valid_unicode(text)).strip()
     return text or None
 
 
