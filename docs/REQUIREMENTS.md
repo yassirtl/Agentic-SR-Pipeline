@@ -69,8 +69,8 @@ Every requirement of the course brief ("Development of an Agentic AI Pipeline fo
 |---|---|---|---|
 | 42 | All source code on GitHub or GitLab | ✅ | GitHub, branch `main` |
 | 43 | README documenting all the steps followed during development and setup (install, configuration, execution, usage) | ✅ | README: "How it was built (development steps)", Install, Configure, Run, Evaluate, Use the app; full log in `docs/PLAN.md` |
-| 44 | Video, 3 minutes max | ❌ | Script ready (kept locally); **to record** (user) |
-| 45 | Individual contribution in the final report | ⚠️ | Report §7 drafted; **the author checks it and writes it in their own words** (user) |
+| 44 | Video, 3 minutes max | ⚠️ | Recorded (slides on the pipeline logic, then the demo replay); **3 min 38 s, over the 3-minute limit**; submitted separately |
+| 45 | Individual contribution in the final report | ✅ | Report §7 (solo project), checked by the author |
 
 ## Gaps and fixes
 
@@ -85,4 +85,4 @@ Every requirement of the course brief ("Development of an Agentic AI Pipeline fo
 | G | Where the RAG index is built | ✅ README |
 | H | Model choice | ✅ README |
 | I | Independent accuracy | ✅ Extraction checked against the T1 expert table (report §4.3); blind screening labels not done |
-| — | Video; individual contribution text | ⏳ user |
+| — | Video; individual contribution text | ✅ recorded (3:38, over the limit); §7 checked |
