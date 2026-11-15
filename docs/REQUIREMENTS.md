@@ -15,7 +15,7 @@ Every requirement of the course brief ("Development of an Agentic AI Pipeline fo
 | 7 | PRISMA workflow: protocol, search strategy, dual screening, extraction, risk of bias, qualitative/quantitative synthesis, report | ✅ | `agents/planner.py`, `search_strategy.py`, `screening.py` (screeners A, B + adjudicator), `extraction.py` (+ RoB), `synthesis.py` (random-effects meta-analysis when ≥ 3 studies, SWiM otherwise), `reporting/` |
 | 8 | Transparency: logging, citation tracking, decision rationales, reproducible traces | ✅ | `audit.jsonl` per run (`audit.py`), a verified quote behind every exclusion and extracted value, S-labels and BibTeX, disk cache of every LLM / database answer (`llm.py`, `sources/http.py`) |
 | 9 | Human in the loop at critical points | ✅ | LangGraph `interrupt`: protocol approval, unresolved screening conflicts, budget cap (`graph.py`, `coordinator.py`); answered in the CLI or the app |
-| 10 | General-purpose: any topic, minimal configuration | ⚠️ | A free question needs no configuration (CLI and app; tested end to end with the scripted LLM). **All real runs so far used the evaluation topics.** **Gap E** |
+| 10 | General-purpose: any topic, minimal configuration | ✅ | A free question needs no configuration. Real run from the app on a new question (atrial fibrillation on wearables, `20261115-110627-5f123b`): all nine stages, 26 studies included, 18 min, $0.29 (report §4.6). A second free question (LLM quantization) found a PDF unicode bug at full-text screening, now fixed and tested |
 
 ## 3. Scope
 
@@ -61,7 +61,7 @@ Every requirement of the course brief ("Development of an Agentic AI Pipeline fo
 | 38 | Evaluation: completeness, accuracy, inter-agent consistency, time savings | ⚠️ | Completeness (gold funnel), consistency (kappa, coordinator refusals), time (PredicTER) ✅; accuracy: precision lower bound + a per-stage check that is **not blind**. **Gap I** (blind labels, user) |
 | 39 | Full pipeline with minimal human intervention | ✅ | `--auto` runs end to end; two optional pauses |
 | 40 | Methodologically sound, fully referenced, transparent; traceable rationales | ✅ | Verified quotes, included-study references and BibTeX, PRISMA diagram, audit |
-| 41 | Significant time reduction, rigor kept | ✅ | Report §4.6: under 30 min and about $1 per run vs 69–80 person-days for the same work (with the stated caveats) |
+| 41 | Significant time reduction, rigor kept | ✅ | Report §4.5: under 30 min and about $1 per run vs 69–80 person-days for the same work (with the stated caveats) |
 
 ## Submission requirements
 
@@ -80,7 +80,7 @@ Every requirement of the course brief ("Development of an Agentic AI Pipeline fo
 | B | Development steps in the README | ✅ "How it was built" section |
 | C | PRISMA 2020 checklist validator | ✅ `reporting/prisma_checklist.py`, article appendix D |
 | D | Context compression | ✅ `rag/compress.py`, setting `rag_compress` (off by default) |
-| E | A real run on a free question (not an evaluation topic) | ⏳ user: one run from the app, about $0.50 |
+| E | A real run on a free question (not an evaluation topic) | ✅ Run from the app, report §4.6 |
 | F | Semantic Scholar | ✅ connector |
 | G | Where the RAG index is built | ✅ README |
 | H | Model choice | ✅ README |
