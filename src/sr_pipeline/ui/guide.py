@@ -553,7 +553,7 @@ def real_work(rid: str, v: D.LiveView) -> None:
 def results_screen(run_dir: Path, r: dict, *, demo: bool) -> None:
     st.subheader("Step 4 · Results")
     todo("Here is what the review found. Next, check the AI's work on a few examples "
-         "(optional), then read the review article it wrote.")
+         "(optional), then read the review draft it wrote.")
     st.markdown(f'<div class="hero"><div class="eyebrow">Question</div>'
                 f'<div class="q" style="font-size:19px">{e(r.get("question") or "")}</div>'
                 f'<div class="meta">Finished in {r.get("minutes", 0):.0f} minutes · cost '
@@ -586,7 +586,7 @@ def results_screen(run_dir: Path, r: dict, *, demo: bool) -> None:
     if back := (3 if demo else None):
         if c1.button("← Back", key="back_to_checks", width="stretch"):
             go(flow_step=back)
-    if c2.button("Skip to the article", key="skip_to_article", width="stretch"):
+    if c2.button("Skip to the review draft", key="skip_to_article", width="stretch"):
         go(flow_step=6)
     if c3.button("Check the AI's accuracy →", key="to_checks", type="primary", width="stretch"):
         go(flow_step=5, chk_idx=0, chk_item=None)
@@ -599,7 +599,7 @@ def results_screen(run_dir: Path, r: dict, *, demo: bool) -> None:
             st.markdown("#### Gaps found")
             st.markdown("\n".join(f"- **{x['id']}** {x['statement']} ({x['evidence']}; "
                                    f"{check_text(x)})" for x in fnd["gaps"]))
-            st.caption("The article proposes a study for each gap that holds after the check "
+            st.caption("The review draft proposes a study for each gap that holds after the check "
                        "(section Research agenda).")
         png = run_dir / "report" / "evidence_map.png"
         if png.exists():
@@ -638,7 +638,7 @@ def checks_screen(run_id: str, root: Path, *, demo: bool, run_dir: Path) -> None
     stage, question = F.CHECKS[idx]
     c1, c2 = st.columns([3, 1])
     c1.markdown(f"**Check {idx + 1} of {len(F.CHECKS)}** · {question}")
-    if c2.button("Skip to the article →", key=f"skip_all_{stage}", width="stretch"):
+    if c2.button("Skip to the review draft →", key=f"skip_all_{stage}", width="stretch"):
         go(flow_step=6)
     check = SC.load_check(run_id, stage, root)
     if check is None:
@@ -728,7 +728,7 @@ def item_card(stage: str, r: dict, i: int, n: int) -> None:
 
 
 def all_done(run_id: str, root: Path, demo: bool) -> None:
-    st.success("✓ Checks done. Last step: the review article.")
+    st.success("✓ Checks done. Last step: the review draft.")
     summary = SC.summarise(run_id, root)
     rows = [{"Check": v["name"], "Marked": f"{v['marked']} / {v['sampled']}",
              "Judged correct": f"{v['correct']} of {v['correct'] + v['wrong']}"
@@ -746,7 +746,7 @@ def all_done(run_id: str, root: Path, demo: bool) -> None:
     c1, _, c3 = st.columns([1, 2, 1])
     if c1.button("← Back to the checks", key="done_back", width="stretch"):
         go(chk_idx=0, chk_item=None)
-    if c3.button("See the review article →", key="to_article", type="primary",
+    if c3.button("See the review draft →", key="to_article", type="primary",
                  width="stretch"):
         go(flow_step=6)
 
@@ -754,12 +754,12 @@ def all_done(run_id: str, root: Path, demo: bool) -> None:
 # --- The review article (both modes): the end of the path --------------------------------
 
 def article_screen(run_dir: Path, *, demo: bool) -> None:
-    st.subheader("Step 6 · Your review article")
+    st.subheader("Step 6 · Your review draft")
     md = run_dir / "report" / "manuscript.md"
     if not md.exists():
-        st.error("The article file (report/manuscript.md) is missing for this review.")
+        st.error("The review draft file (report/manuscript.md) is missing for this review.")
         return
-    st.success("✓ The review is complete. Below is the article the AI wrote.")
+    st.success("✓ The review is complete. Below is the review draft the AI wrote (a manuscript draft, to be checked and completed by the authors).")
     todo("Read it here, or press <b>Download as Word</b> to edit it. It is a draft: a person "
          "must check it before it is used.")
     files = F.report_files(run_dir)

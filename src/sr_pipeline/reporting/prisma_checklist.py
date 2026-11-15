@@ -176,6 +176,6 @@ def appendix(items: list[dict]) -> list[str]:
                      f"{i['where']} |" for i in items)
     return ["## Appendix D. PRISMA 2020 checklist (checked by code)", "",
             f"Each of the {s['items']} PRISMA 2020 checklist items (27 items with their parts) "
-            f"was checked in this article by code: {s[REPORTED]} reported, {s[PARTLY]} partly, "
+            f"was checked in this review draft by code: {s[REPORTED]} reported, {s[PARTLY]} partly, "
             f"{s[MISSING]} not reported.", "",
             "| Item | Section | Topic | Status | Where / why |", "|---|---|---|---|---|", rows]

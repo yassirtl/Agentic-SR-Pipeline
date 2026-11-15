@@ -25,7 +25,7 @@ ROOT = SC.CHECKS_DIR.parents[1]                 # project root (evaluation/stage
 DEMO_DIR = ROOT / "docs" / "demo"
 
 STEPS = ["Question", "Approve the plan", "AI at work", "Results", "Check accuracy",
-         "Your review article"]
+         "Your review draft"]
 
 PLAIN = {   # stage -> what it does, in plain words
     "planner": "Write the plan (which papers count)",

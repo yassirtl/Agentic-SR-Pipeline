@@ -152,7 +152,7 @@ def test_demo_runs_start_to_end_by_its_main_buttons(tmp_path, monkeypatch):
     assert any("Checks done" in s.value for s in at.success)
     # Last step: the review article, shown in the page with its downloads.
     at = click(at, "to_article")
-    assert any("Your review article" in s.value for s in at.subheader)
+    assert any("Your review draft" in s.value for s in at.subheader)
     assert any("Lightweight Machine-Learning Models for ECG Classification" in m.value
                for m in at.markdown)
     assert at.get("download_button")
@@ -239,7 +239,7 @@ def test_real_run_start_plan_disagreement_results_check(ui):
     assert rows[0]["mark"] == "correct"
     # Skip the rest of the checks: the article of this run is the last step.
     at = click(at, "skip_all_ta")
-    assert any("Your review article" in s.value for s in at.subheader)
+    assert any("Your review draft" in s.value for s in at.subheader)
     assert not at.exception
 
 
@@ -344,4 +344,4 @@ def test_results_can_skip_straight_to_the_article(tmp_path, monkeypatch):
     at = guide(flow_mode="demo", flow_step=4)
     at = click(at, "skip_to_article")
     assert at.session_state["flow_step"] == 6
-    assert any("Your review article" in s.value for s in at.subheader)
+    assert any("Your review draft" in s.value for s in at.subheader)
