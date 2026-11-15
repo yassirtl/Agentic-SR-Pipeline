@@ -1,0 +1,37 @@
+study,field,"expert (Nazarian 2021, Table 1)",pipeline (run 20261108-204319-7daa7f),verdict
+Bumgarner 2018,device,Apple watch,Kardia Band (KB) ... using an Apple Watch,match
+Bumgarner 2018,subjects,100,n_enrolled 100,match
+Bumgarner 2018,reference standard,12-lead ECG (physician reviewed),physician-interpreted 12-lead ECGs,match
+Tison 2018,device,Apple watch,smartwatch photoplethysmography coupled with a deep neural network,vague
+Tison 2018,subjects,1617,not reported,not reported
+Tison 2018,reference standard,12-lead ECG,12-lead ECG-diagnosed AF,match
+Wasserlauf 2019,device,Apple watch,Apple Watch with KardiaBand,match
+Wasserlauf 2019,subjects,24,24,match
+Wasserlauf 2019,reference standard,Insertable cardiac monitor,insertable cardiac monitor (Reveal LINQ),match
+Perez 2019,device,Apple watch,Apple Watch photoplethysmography sensor,match
+Perez 2019,subjects,"419,297","n_enrolled 419,297",match
+Perez 2019,reference standard,ECG patch,"comparator: no intervention, usual care or any control",wrong
+Zhang 2019,device,"Huawei Watch GT, Honor Watch, Honor Band4",smart band or smart watches,vague
+Zhang 2019,subjects,263 / 263 / 209 (per device),n_enrolled 361,differs
+Zhang 2019,reference standard,12-lead ECG and physical examination,comparator: no intervention,wrong
+Dorr 2019,device,Samsung GearFit 2,smartwatch-based algorithm using PPG signals,vague
+Dorr 2019,subjects,508,n_analysed 508,match
+Dorr 2019,reference standard,Internet-enabled mobile ECG,cardiologists' diagnosis by ECG,match
+Bashar 2019 (EMBC),device,Samsung Simband,smartwatches,vague
+Bashar 2019 (EMBC),subjects,20,20,match
+Bashar 2019 (EMBC),reference standard,Holter monitor ECG,not specified,not reported
+Chen 2020,device,Amazfit Health Band 1S,Amazfit Health Band 1S,match
+Chen 2020,subjects,401,401,match
+Chen 2020,reference standard,12-lead ECG (physician reviewed),ECG readings judged by physicians,match
+Rajakariar 2019,device,Apple watch,not reported,not reported
+Rajakariar 2019,subjects,200,not reported,not reported
+Rajakariar 2019,reference standard,12-lead ECG,not reported,not reported
+Selder 2020,device,Wavelet wristband,Wavelet PPG wristband,match
+Selder 2020,subjects,60,60,match
+Selder 2020,reference standard,One-lead ECG,one-lead ECG by two independent cardiologists,match
+Han 2020,device,Samsung Gear S3,smartwatch with PPG data acquisition,vague
+Han 2020,subjects,2,37,differs
+Han 2020,reference standard,ECG patch,comparator: usual care; reference: PAC/PVC ground truth,wrong
+Caillol 2021,device,Apple watch,not reported,not reported
+Caillol 2021,subjects,256,not reported,not reported
+Caillol 2021,reference standard,12-lead ECG,not reported,not reported

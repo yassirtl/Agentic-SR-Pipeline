@@ -58,7 +58,7 @@ Every requirement of the course brief ("Development of an Agentic AI Pipeline fo
 | 35 | Configurable protocol template aligned with PRISMA | ✅ | `protocols/template.yaml`, `evaluation/topics.yaml` |
 | 36 | End-to-end demonstration on at least one real topic | ✅ | Real runs on T1, T2, T3, D0 (`evaluation/results/`); free demo replay in the app (`docs/demo/`) |
 | 37 | Technical report and user guide | ✅ | `docs/report/report.pdf`, `README.md` |
-| 38 | Evaluation: completeness, accuracy, inter-agent consistency, time savings | ⚠️ | Completeness (gold funnel), consistency (kappa, coordinator refusals), time (PredicTER) ✅; accuracy: precision lower bound + a per-stage check that is **not blind**. **Gap I** (blind labels, user) |
+| 38 | Evaluation: completeness, accuracy, inter-agent consistency, time savings | ✅ | Completeness (gold funnel), consistency (kappa, judge share, coordinator refusals), time (PredicTER) ✅; accuracy: extraction against the T1 expert table (23 of 28 reported values agree, `evaluation/expert_check/`), precision lower bound, and a per-stage check of T2 that is **not blind** (report §4.3). Blind screening labels not done |
 | 39 | Full pipeline with minimal human intervention | ✅ | `--auto` runs end to end; two optional pauses |
 | 40 | Methodologically sound, fully referenced, transparent; traceable rationales | ✅ | Verified quotes, included-study references and BibTeX, PRISMA diagram, audit |
 | 41 | Significant time reduction, rigor kept | ✅ | Report §4.5: under 30 min and about $1 per run vs 69–80 person-days for the same work (with the stated caveats) |
@@ -84,5 +84,5 @@ Every requirement of the course brief ("Development of an Agentic AI Pipeline fo
 | F | Semantic Scholar | ✅ connector |
 | G | Where the RAG index is built | ✅ README |
 | H | Model choice | ✅ README |
-| I | Blind accuracy | ⏳ user (optional): 30 blind labels in the app |
+| I | Independent accuracy | ✅ Extraction checked against the T1 expert table (report §4.3); blind screening labels not done |
 | — | Video; individual contribution text | ⏳ user |

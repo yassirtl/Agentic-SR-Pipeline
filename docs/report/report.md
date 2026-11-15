@@ -8,7 +8,7 @@ The code is on GitHub: https://github.com/yassirtl/Agentic-SR-Pipeline. All the 
 
 A systematic review collects all the studies on one question, filters them with fixed rules and summarises what they found. Done by hand, it takes months. I built a multi-agent system with LangGraph that does the whole review from one question, following PRISMA 2020: it writes the protocol, searches free databases, removes duplicates, screens titles, abstracts and full texts with two AI screeners and a judge, extracts the data, rates the risk of bias, writes the synthesis, checks it with a critic agent and writes a first draft of the review. An LLM coordinator chooses the next step, and plain code refuses any step that breaks the PRISMA order. Every exclusion and every extracted value must come with a quote, and code checks that the quote is really in the paper.
 
-I tested the system against two reviews written by experts. On the first, untouched try, it kept 8 of their 18 studies (44%) and 5 of their 30 (17%). Most losses came from the search, not from the screening. After I fixed the search and one bug, it kept 67% and 53%, in under 30 minutes and for about one dollar per review. The price is precision: the system keeps many more papers than the experts did, and only about 5% of them are on the experts' lists. On a third topic with no expert review, I checked 30 random decisions by hand (not blind) and judged 29 correct. The system also ran end to end on a new question I typed in the app (26 studies included, 18 minutes, $0.29).
+I tested the system against two reviews written by experts. On the first, untouched try, it kept 8 of their 18 studies (44%) and 5 of their 30 (17%). Most losses came from the search, not from the screening. After I fixed the search and one bug, it kept 67% and 53%, in under 30 minutes and for about one dollar per review. The price is precision: the system keeps many more papers than the experts did, and only about 5% of them are on the experts' lists. Against the experts' own data table, 23 of the 28 values it extracted agree (82%). On a third topic with no expert review, I checked 30 random decisions by hand (not blind) and judged 29 correct. The system also ran end to end on a new question I typed in the app (26 studies included, 18 minutes, $0.29).
 
 ## 1. Introduction
 
@@ -169,6 +169,17 @@ Costs are not comparable between rows, because later runs reused cached answers 
 
 With 10 items, 10 of 10 is still compatible with a true rate as low as 72%. All 10 full-text items were inclusions, so the sample says nothing about wrong exclusions there. Extraction was checked for correctness, not for what was missed. I prepared blind samples of 30 records, but did not label them.
 
+**Extraction checked against an expert table.** The T1 experts list, for each of their studies, the smartwatch used, the number of subjects and the reference test (Nazarian 2021, Table 1). For the 12 gold studies that the final T1 run included, I compared the pipeline's values for these three fields with the expert table: 36 checks in all, with the expert value as the answer (`evaluation/expert_check/`).
+
+| Field | Same as experts | Correct but vague | Different | Not found |
+|---|---|---|---|---|
+| Device | 5 | 5 | 0 | 2 |
+| Number of subjects | 7 | 0 | 2 | 3 |
+| Reference test | 6 | 0 | 3 | 3 |
+| **All** | **18** | **5** | **5** | **8** |
+
+Of the 28 values the pipeline reported, 23 agree with the experts (82%, 95% interval 64% to 92%), and 18 are exactly the same (64%). Of the 5 that disagree, 2 are different counts, both backed by a quote from the paper (for example the total enrolled, where the experts give a count per device). The other 3 are real errors, all with the same cause: for diagnostic studies, the "comparator" field was filled with the protocol's default ("no intervention, usual care") instead of the reference test. All 8 values not found are in studies read from the abstract only. The device is never wrong, but it is often too vague ("smartwatches" instead of the model).
+
 ### 4.4 Consistency between agents
 
 | Run | Kappa, abstracts | Decided by the judge | Kappa, full texts | Coordinator moves refused |
@@ -220,7 +231,7 @@ On D0 (exercise and depression in older adults, 15 gold studies), only 1 gold st
 - **Low agreement on abstracts:** the judge does most of the work there.
 - **The full-text rule reads passages, not the whole paper.** One gold study was lost because the word "smartwatch" was not in the 5 passages retrieved.
 - **Weak synthesis on these topics:** almost no study reported numbers the code could verify and pool, so the review draft lists accuracy figures rather than comparing them.
-- **No blind human labels:** T2's accuracy rests on my own check, not blind, of 10 items per stage on three stages.
+- **Accuracy checks are small:** extraction was checked against the experts' table on 12 studies and 3 fields only; screening accuracy has no blind human labels, and T2's accuracy rests on my own check, not blind, of 10 items per stage.
 - **The manual estimate** uses PredicTER's default rates (I did not read the paper itself) and the pipeline's own counts, which are inflated by the low precision.
 - **The T2 review draft is based on a sample:** the run read the 100 most relevant of 555 records. Its gaps were checked against OpenAlex instead of a full run.
 - **Free databases and open-access full texts only;** one model (gpt-4o-mini) for every agent.
@@ -231,7 +242,7 @@ This is a solo project: I did every part of it.
 
 - **Design:** the architecture (the LangGraph state, nine PRISMA stages, the LLM coordinator with a code guardrail, the human pauses, caching and cost tracking), the decisions log and the plan, written down step by step in `docs/PLAN.md`.
 - **Pipeline:** the protocol template and planner; the search strategy and the four database connectors with deduplication; full-text download and the hybrid RAG index; dual screening with a judge, and the screening rules (tuned on a development topic, then frozen); extraction and risk of bias with verified quotes; synthesis and the tool-calling critic; the report, exports and command line.
-- **Evaluation:** the choice of the test topics and expert reviews and their gold lists; the evaluation code (gold funnel, precision, agreement, time and cost); all real runs and their analysis, including the fixes made after seeing results, and saying so; the hand check of T2.
+- **Evaluation:** the choice of the test topics and expert reviews and their gold lists; the evaluation code (gold funnel, precision, agreement, time and cost); all real runs and their analysis, including the fixes made after seeing results, and saying so; the hand check of T2 and the comparison with the experts' data table.
 - **App and review draft:** the Streamlit app (guided review, free demo, live run with budget cap, accuracy check, blind labels, run details) and the review draft generator (study table, evidence map, summary of findings, gaps checked against OpenAlex, research agenda, PRISMA checklist).
 - **Deliverables:** this report, the README user guide, the demo and the video.
 
